@@ -937,13 +937,13 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_MHD(
 
         sham::DeviceBuffer<Tvec> &buf_dB_on_rho   = pdat.get_field_buf_ref<Tvec>(idB_on_rho);
         sham::DeviceBuffer<Tscal> &buf_dpsi_on_ch = pdat.get_field_buf_ref<Tscal>(idpsi_on_ch);
-        // logger::raw_ln("charged dB dpsi");
+        logger::raw_ln("charged dB dpsi");
 
         sham::DeviceBuffer<Tvec> &buf_B_on_rho = mpdat.get_field_buf_ref<Tvec>(iB_on_rho_interf);
         sham::DeviceBuffer<Tscal> &buf_psi_on_ch
             = mpdat.get_field_buf_ref<Tscal>(ipsi_on_ch_interf);
 
-        // logger::raw_ln("charged B psi");
+        logger::raw_ln("charged B psi");
         //  ADD curlBBBBBBBBB
 
         sycl::range range_npart{pdat.get_obj_cnt()};
@@ -1145,7 +1145,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_MHD(
                 axyz[id_a]       = force_pressure;
                 du[id_a]         = tmpdU_pressure;
                 dB_on_rho[id_a]  = magnetic_eq;
-                dpsi_on_ch[id_a] = psi_eq;
+                dpsi_on_ch[id_a] = psi_eq-psi_a/h_a;	// fovercleaning = 1 => vclean = vshock
 
                 if (do_MHD_debug) {
                     mag_pressure[id_a] = mag_pressure_term;
