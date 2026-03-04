@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -16,7 +16,9 @@
 
 #include "shammodels/nbody/models/nbody_selfgrav.hpp"
 #include "shammath/symtensor_collections.hpp"
-#include "shamphys/fmm.hpp"
+#include "shamphys/fmm/GreenFuncGravCartesian.hpp"
+#include "shamphys/fmm/grav_moments.hpp"
+#include "shamphys/fmm/offset_multipole.hpp"
 #include "shamrock/legacy/patch/comm/patch_object_mover.hpp"
 #include "shamrock/legacy/patch/interfaces/interface_handler.hpp"
 #include "shamrock/legacy/patch/utility/full_tree_field.hpp"
@@ -313,7 +315,7 @@ void compute_multipoles(
                             multipoles,
                             s_cid * SymTensorCollection<flt, 0, fmm_order>::num_component);
 
-                        auto B_ns_offseted = offset_multipole(B_ns, d);
+                        auto B_ns_offseted = shamphys::offset_multipole_delta(B_ns, d);
 
                         B_n += B_ns_offseted;
                     };
@@ -372,10 +374,10 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
 
     // Stepper stepper(sched,periodic_bc,htol_up_tol,htol_up_iter,gpart_mass);
 
-    const u32 ixyz      = sched.pdl().get_field_idx<vec3>("xyz");
-    const u32 ivxyz     = sched.pdl().get_field_idx<vec3>("vxyz");
-    const u32 iaxyz     = sched.pdl().get_field_idx<vec3>("axyz");
-    const u32 iaxyz_old = sched.pdl().get_field_idx<vec3>("axyz_old");
+    const u32 ixyz      = sched.pdl_old().get_field_idx<vec3>("xyz");
+    const u32 ivxyz     = sched.pdl_old().get_field_idx<vec3>("vxyz");
+    const u32 iaxyz     = sched.pdl_old().get_field_idx<vec3>("axyz");
+    const u32 iaxyz_old = sched.pdl_old().get_field_idx<vec3>("axyz_old");
 
     // const u32 ihpart    = sched.pdl.get_field_idx<flt>("hpart");
 
@@ -444,10 +446,10 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
         };
 
     auto leapfrog_lambda = [&](flt old_time, bool do_force, bool do_corrector) -> flt {
-        const u32 ixyz      = sched.pdl().get_field_idx<vec3>("xyz");
-        const u32 ivxyz     = sched.pdl().get_field_idx<vec3>("vxyz");
-        const u32 iaxyz     = sched.pdl().get_field_idx<vec3>("axyz");
-        const u32 iaxyz_old = sched.pdl().get_field_idx<vec3>("axyz_old");
+        const u32 ixyz      = sched.pdl_old().get_field_idx<vec3>("xyz");
+        const u32 ivxyz     = sched.pdl_old().get_field_idx<vec3>("vxyz");
+        const u32 iaxyz     = sched.pdl_old().get_field_idx<vec3>("axyz");
+        const u32 iaxyz_old = sched.pdl_old().get_field_idx<vec3>("axyz_old");
 
         logger::info_ln(
             "NBodyleapfrog",
@@ -479,7 +481,7 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
 
         // leapfrog predictor
         sched.for_each_patch_data([&](u64 id_patch, Patch cur_p, PatchDataLayer &pdat) {
-            shamlog_debug_ln("SPHLeapfrog", "patch : n°", id_patch, "->", "predictor");
+            shamlog_debug_ln("SPHLeapfrog", "patch : n", id_patch, "->", "predictor");
 
             lambda_update_time(
                 shamsys::instance::get_compute_scheduler().get_queue(),
@@ -500,7 +502,7 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
                 sycl::range<1>{pdat.get_obj_cnt()},
                 dt_cur / 2);
 
-            shamlog_debug_ln("SPHLeapfrog", "patch : n°", id_patch, "->", "dt fields swap");
+            shamlog_debug_ln("SPHLeapfrog", "patch : n", id_patch, "->", "dt fields swap");
 
             lambda_swap_der(
                 shamsys::instance::get_compute_scheduler().get_queue(),
@@ -530,7 +532,7 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
         sched.for_each_patch_data([&](u64 id_patch, Patch &cur_p, PatchDataLayer &pdat) {
             shamlog_debug_ln(
                 "SPHLeapfrog",
-                "patch : n°",
+                "patch : n",
                 id_patch,
                 "->",
                 "making Radix Tree ( N=",
@@ -539,7 +541,7 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
 
             if (pdat.is_empty()) {
                 shamlog_debug_ln(
-                    "SPHLeapfrog", "patch : n°", id_patch, "->", "is empty skipping tree build");
+                    "SPHLeapfrog", "patch : n", id_patch, "->", "is empty skipping tree build");
             } else {
 
                 auto &buf_xyz = pdat.get_field<vec3>(ixyz).get_buf();
@@ -558,10 +560,10 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
 
         sched.for_each_patch_data([&](u64 id_patch, Patch & /*cur_p*/, PatchDataLayer &pdat) {
             shamlog_debug_ln(
-                "SPHLeapfrog", "patch : n°", id_patch, "->", "compute radix tree cell volumes");
+                "SPHLeapfrog", "patch : n", id_patch, "->", "compute radix tree cell volumes");
             if (pdat.is_empty()) {
                 shamlog_debug_ln(
-                    "SPHLeapfrog", "patch : n°", id_patch, "->", "is empty skipping tree build");
+                    "SPHLeapfrog", "patch : n", id_patch, "->", "is empty skipping tree build");
             } else {
                 radix_trees[id_patch]->compute_cell_ibounding_box(
                     shamsys::instance::get_compute_queue());
@@ -875,11 +877,10 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
                             auto Q_n = SymTensorCollection<flt, 0, fmm_order>::load(
                                 multipoles,
                                 node_b * SymTensorCollection<flt, 0, fmm_order>::num_component);
-                            auto D_n
-                                = GreenFuncGravCartesian<flt, 1, fmm_order + 1>::get_der_tensors(
-                                    r_fmm);
+                            auto D_n = shamphys::GreenFuncGravCartesian<flt, 1, fmm_order + 1>::
+                                get_der_tensors(r_fmm);
 
-                            dM_k += get_dM_mat(D_n, Q_n);
+                            dM_k += shamphys::get_dM_mat(D_n, Q_n);
                         });
 
                     // #endif
@@ -1090,10 +1091,10 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
                                 auto Q_n = SymTensorCollection<flt, 0, fmm_order>::load(
                                     multipoles,
                                     node_b * SymTensorCollection<flt, 0, fmm_order>::num_component);
-                                auto D_n = GreenFuncGravCartesian<flt, 1, fmm_order + 1>::
+                                auto D_n = shamphys::GreenFuncGravCartesian<flt, 1, fmm_order + 1>::
                                     get_der_tensors(r_fmm);
 
-                                dM_k += get_dM_mat(D_n, Q_n);
+                                dM_k += shamphys::get_dM_mat(D_n, Q_n);
                             });
 
                         walker::iter_object_in_cell(tree_acc_curr, id_cell_a, [&](u32 id_a) {
@@ -1138,7 +1139,7 @@ f64 models::nbody::Nbody_SelfGrav<flt>::evolve(
 
         // leapfrog predictor
         sched.for_each_patch_data([&](u64 id_patch, Patch cur_p, PatchDataLayer &pdat) {
-            shamlog_debug_ln("SPHLeapfrog", "patch : n°", id_patch, "->", "corrector");
+            shamlog_debug_ln("SPHLeapfrog", "patch : n", id_patch, "->", "corrector");
 
             lambda_correct(
                 shamsys::instance::get_compute_scheduler().get_queue(),

@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -19,6 +19,7 @@
 #include "shamalgs/primitives/is_all_true.hpp"
 #include "shamalgs/primitives/reduction.hpp"
 #include "shamalgs/primitives/scan_exclusive_sum_in_place.hpp"
+#include "shamalgs/primitives/segmented_sort_in_place.hpp"
 #include "shamalgs/random.hpp"
 #include "shambindings/pybind11_stl.hpp"
 #include "shambindings/pybindaliases.hpp"
@@ -81,6 +82,10 @@ Register_pymod(shamalgslibinit) {
     });
     shamalgs_module.def("mock_buffer_u8", [](u64 seed, u32 len, u8 min_bound, u8 max_bound) {
         return shamalgs::random::mock_buffer_usm<u8>(
+            shamsys::instance::get_compute_scheduler_ptr(), seed, len, min_bound, max_bound);
+    });
+    shamalgs_module.def("mock_buffer_u32", [](u64 seed, u32 len, u32 min_bound, u32 max_bound) {
+        return shamalgs::random::mock_buffer_usm<u32>(
             shamsys::instance::get_compute_scheduler_ptr(), seed, len, min_bound, max_bound);
     });
     shamalgs_module.def(
@@ -194,6 +199,48 @@ Register_pymod(shamalgslibinit) {
 
         shamalgs_module.def("get_default_impl_list_scan_exclusive_sum_in_place", []() {
             return shamalgs::primitives::impl::get_default_impl_list_scan_exclusive_sum_in_place();
+        });
+    }
+
+    { // segmented_sort_in_place
+        shamalgs_module.def(
+            "segmented_sort_in_place",
+            [](sham::DeviceBuffer<u32> &buf, const sham::DeviceBuffer<u32> &offsets) {
+                shamalgs::primitives::segmented_sort_in_place(buf, offsets);
+            });
+
+        shamalgs_module.def(
+            "benchmark_segmented_sort_in_place",
+            [](sham::DeviceBuffer<u32> &buf, const sham::DeviceBuffer<u32> &offsets) {
+                auto buf_copy     = buf.copy();
+                auto offsets_copy = offsets.copy();
+
+                buf_copy.synchronize();
+                offsets_copy.synchronize();
+
+                shambase::Timer timer;
+                timer.start();
+
+                shamalgs::primitives::segmented_sort_in_place(buf_copy, offsets_copy);
+                buf_copy.synchronize();
+                offsets_copy.synchronize();
+
+                timer.end();
+                return timer.elasped_sec();
+            });
+
+        shamalgs_module.def(
+            "set_impl_segmented_sort_in_place",
+            [](const std::string &impl, const std::string &param = "") {
+                shamalgs::primitives::impl::set_impl_segmented_sort_in_place(impl, param);
+            });
+
+        shamalgs_module.def("get_current_impl_segmented_sort_in_place", []() {
+            return shamalgs::primitives::impl::get_current_impl_segmented_sort_in_place();
+        });
+
+        shamalgs_module.def("get_default_impl_list_segmented_sort_in_place", []() {
+            return shamalgs::primitives::impl::get_default_impl_list_segmented_sort_in_place();
         });
     }
 }

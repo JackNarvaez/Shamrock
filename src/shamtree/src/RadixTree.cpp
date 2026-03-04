@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -179,8 +179,8 @@ auto RadixTree<u_morton, vec>::compute_int_boxes(
         auto h_max_cell
             = buf_cell_int_rad_buf->template get_access<sycl::access::mode::discard_write>(cgh);
 
-        auto cell_particle_ids = tree_reduced_morton_codes.buf_reduc_index_map
-                                     ->template get_access<sycl::access::mode::read>(cgh);
+        auto cell_particle_ids  = tree_reduced_morton_codes.buf_reduc_index_map
+                                      ->template get_access<sycl::access::mode::read>(cgh);
         auto particle_index_map = tree_morton_codes.buf_particle_index_map
                                       ->template get_access<sycl::access::mode::read>(cgh);
 
@@ -333,6 +333,7 @@ void RadixTree<u_morton, vec3>::print_tree_field(sycl::buffer<T> &buf_field) {
     sycl::host_accessor rchild_flag{*tree_struct.buf_rchild_flag};
     sycl::host_accessor lchild_flag{*tree_struct.buf_lchild_flag};
 
+    // start allow utf-8
     auto printer = [&]() {
         auto get_print_step
             = [&](u32 gid, std::string prefix, bool is_left, auto &step_ref) -> std::string {
@@ -365,6 +366,7 @@ void RadixTree<u_morton, vec3>::print_tree_field(sycl::buffer<T> &buf_field) {
 
         logger::raw_ln(get_print_step(0, "", false, get_print_step));
     };
+    // end allow utf-8
 
     printer();
 }

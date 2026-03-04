@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -20,9 +20,13 @@
 #include "shambase/numeric_limits.hpp"
 #include "shambase/string.hpp"
 #include "shambackends/sysinfo.hpp"
+#include "shamcmdopt/env.hpp"
 #include "shamcomm/logs.hpp"
 #include "shamcomm/mpiInfo.hpp"
 #include <fmt/ranges.h>
+
+auto SHAM_MAX_ALLOC_SIZE
+    = shamcmdopt::getenv_str_register("SHAM_MAX_ALLOC_SIZE", "shamrock max alloc size if set");
 
 namespace sham {
 
@@ -84,10 +88,9 @@ namespace sham {
         try {                                                                                      \
             return {dev.get_info<sycl::info::device::info_>()};                                    \
         } catch (...) {                                                                            \
-            logger::warn_ln(                                                                       \
-                "Device",                                                                          \
-                "dev.get_info<sycl::info::device::" #info_ ">() raised an exception for device",   \
-                name);                                                                             \
+            warnings.push_back(                                                                    \
+                "dev.get_info<sycl::info::device::" #info_ ">() raised an exception for device "   \
+                + name);                                                                           \
             return {};                                                                             \
         }                                                                                          \
     }();
@@ -98,10 +101,21 @@ namespace sham {
         try {                                                                                      \
             return {dev.get_info<sycl::info::device::info_>()};                                    \
         } catch (...) {                                                                            \
-            logger::warn_ln(                                                                       \
-                "Device",                                                                          \
-                "dev.get_info<sycl::info::device::" #info_ ">() raised an exception for device",   \
-                name);                                                                             \
+            warnings.push_back(                                                                    \
+                "dev.get_info<sycl::info::device::" #info_ ">() raised an exception for device "   \
+                + name);                                                                           \
+            return {};                                                                             \
+        }                                                                                          \
+    }();
+
+    /// Fetches a property of a SYCL device (for cases where multiple prop would have the same name)
+#define FETCH_PROPN_FULL(info_, info_type, n)                                                      \
+    std::optional<info_type> n = [&]() -> std::optional<info_type> {                               \
+        try {                                                                                      \
+            return {dev.get_info<info_>()};                                                        \
+        } catch (...) {                                                                            \
+            warnings.push_back(                                                                    \
+                "dev.get_info<" #info_ ">() raised an exception for device " + name);              \
             return {};                                                                             \
         }                                                                                          \
     }();
@@ -114,6 +128,8 @@ namespace sham {
      *         SYCL device.
      */
     DeviceProperties fetch_properties(const sycl::device &dev) {
+
+        std::vector<std::string> warnings;
 
         // Just to ensure that this one is not empty
         std::string name = "?";
@@ -207,50 +223,57 @@ namespace sham {
         FETCH_PROP(partition_type_property, sycl::info::partition_property)
         FETCH_PROP(partition_type_affinity_domain, sycl::info::partition_affinity_domain)
 
+        auto physmem = sham::getPhysicalMemory();
+
 // On acpp 2^64-1 is returned, so we need to correct it
 // see : https://github.com/AdaptiveCpp/AdaptiveCpp/issues/1573
 #ifdef SYCL_COMP_ACPP
         if (get_device_backend(dev) == Backend::OPENMP) {
             // Correct memory size
-            auto physmem = sham::getPhysicalMemory();
             if (physmem) {
                 global_mem_size = {*physmem};
             }
         }
 #endif
 
-        // with oneapi there can be some issues with this
-        // see:https://github.com/intel/llvm/blob/sycl/sycl/ReleaseNotes.md#sycl-library-50
-        // > Fixed sycl::device::get_info<sycl::info::device::mem_base_addr_align> query
-        // > which was returning incorrect result for CUDA plugin [a6d03f3]
-        //
-        // So easy fix since this is cuda and cuda default ot 8 i just default to 8 also
-        // Note: on the CRAL DGX it was reporting 4096 hence the check on 2048
-        if (*mem_base_addr_align && mem_base_addr_align > 2048) {
-            shamlog_warn_ln(
-                "Backends",
+        // with acpp 8 bit is returned for most backends so we default to 8 bytes (64 bits)
+        if (*mem_base_addr_align && mem_base_addr_align == 8) {
+            warnings.push_back(
                 shambase::format(
-                    "mem_base_addr_align for device {} is {}\n   I will assume that this is an "
-                    "issue and default to 8 instead",
-                    name,
+                    "mem_base_addr_align for is {} bits. I will assume that this is an "
+                    "issue and default to 64 bits (8 bytes) instead.",
                     *mem_base_addr_align));
-            mem_base_addr_align = 8;
+            mem_base_addr_align = CHAR_BIT * 8;
         }
 
         // Some backends do not report sub_group_sizes, so we default to {1}
         u32 default_work_group_size = 1;
         if (!sub_group_sizes) {
             sub_group_sizes = std::vector<size_t>{default_work_group_size};
-            shamlog_warn_ln(
-                "Backends",
+            warnings.push_back(
                 shambase::format(
-                    "cannot fetch sub_group_sizes for device {}, defaulting to {}",
-                    name,
-                    default_work_group_size));
+                    "cannot fetch sub_group_sizes, defaulting to {}", default_work_group_size));
         }
         default_work_group_size = shambase::get_check_ref(sub_group_sizes)[0];
 
-        return DeviceProperties{
+        size_t max_alloc_dev  = shambase::get_check_ref(max_mem_alloc_size);
+        size_t max_alloc_host = ((physmem) ? *physmem : i64_max);
+        if (SHAM_MAX_ALLOC_SIZE) {
+            try {
+                const auto max_alloc = std::stoull(SHAM_MAX_ALLOC_SIZE.value());
+                max_alloc_dev        = max_alloc;
+                max_alloc_host       = max_alloc;
+            } catch (const std::exception &e) {
+                warnings.push_back(
+                    shambase::format(
+                        "Could not parse SHAM_MAX_ALLOC_SIZE value '{}'. Error: {}. "
+                        "Ignoring override.",
+                        SHAM_MAX_ALLOC_SIZE.value(),
+                        e.what()));
+            }
+        }
+
+        DeviceProperties ret = {
             Vendor::UNKNOWN,         // We cannot determine the vendor
             get_device_backend(dev), // Query the backend based on the platform name
             get_device_type(dev),
@@ -259,10 +282,25 @@ namespace sham {
             shambase::get_check_ref(global_mem_cache_size),
             shambase::get_check_ref(local_mem_size),
             shambase::get_check_ref(max_compute_units),
-            shambase::get_check_ref(max_mem_alloc_size),
-            shambase::get_check_ref(mem_base_addr_align),
+            max_alloc_dev,
+            max_alloc_host,
+            // the SYCL standard returns the alignment in bits, we convert to bytes for convenience
+            shambase::get_check_ref(mem_base_addr_align) / CHAR_BIT,
             shambase::get_check_ref(sub_group_sizes),
-            default_work_group_size};
+            default_work_group_size,
+            std::nullopt,
+            warnings};
+
+        { // PCI id infos
+#if defined(SYCL_EXT_INTEL_DEVICE_INFO) && SYCL_EXT_INTEL_DEVICE_INFO >= 5
+            FETCH_PROPN_FULL(sycl::ext::intel::info::device::pci_address, std::string, pci_address)
+            if (pci_address) {
+                ret.pci_address = *pci_address;
+            }
+#endif
+        }
+
+        return ret;
     }
 
     /**
@@ -274,7 +312,8 @@ namespace sham {
      * @return A structure containing the MPI-related properties of the
      *         given SYCL device.
      */
-    DeviceMPIProperties fetch_mpi_properties(const sycl::device &dev, DeviceProperties prop) {
+    DeviceMPIProperties fetch_mpi_properties(
+        const sycl::device &dev, const DeviceProperties &prop) {
         bool dgpu_capable = false;
 
         // If CUDA-aware MPI is enabled, and the device is a CUDA device,

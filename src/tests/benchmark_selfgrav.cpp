@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -137,7 +137,7 @@ void benchmark_selfgrav_main(u32 npatch, std::string name) {
         f64 gsz = shamsys::instance::get_compute_queue()
                       .get_device()
                       .get_info<sycl::info::device::global_mem_size>();
-        gsz = 1024 * 1024 * 1024 * 1;
+        gsz     = 1024 * 1024 * 1024 * 1;
 
         logger::raw_ln("limit = ", part_per_g * (gsz / 1.3) / (1024. * 1024. * 1024.));
     }
@@ -156,7 +156,7 @@ void benchmark_selfgrav_main(u32 npatch, std::string name) {
         f64 gsz = shamsys::instance::get_compute_queue()
                       .get_device()
                       .get_info<sycl::info::device::global_mem_size>();
-        gsz = 1024 * 1024 * 1024 * 1;
+        gsz     = 1024 * 1024 * 1024 * 1;
 
         f64 a = (Nesti / part_per_g) * 1024. * 1024. * 1024.;
         f64 b = multiplier * gsz / 1.3;

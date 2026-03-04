@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -143,8 +143,7 @@ namespace shamrock::sfc {
 } // namespace shamrock::sfc
 
 [[deprecated]]
-constexpr u64 hilbert_box21_sz
-    = 2097152 - 1;
+constexpr u64 hilbert_box21_sz = 2097152 - 1;
 
 template<int bits>
 [[deprecated]]

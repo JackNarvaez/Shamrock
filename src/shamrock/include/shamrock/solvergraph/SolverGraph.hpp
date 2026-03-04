@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -72,12 +72,14 @@ namespace shamrock::solvergraph {
          * @param node Shared pointer to the node instance
          * @throws std::invalid_argument if a node with the same name already exists
          */
-        inline void register_node_ptr_base(const std::string &name, std::shared_ptr<INode> node) {
+        inline std::shared_ptr<INode> register_node_ptr_base(
+            const std::string &name, std::shared_ptr<INode> node) {
             const auto [it, inserted] = nodes.try_emplace(name, std::move(node));
             if (!inserted) {
                 shambase::throw_with_loc<std::invalid_argument>(
                     shambase::format("Node already exists: {}", name));
             }
+            return it->second;
         }
 
         /**
@@ -87,12 +89,14 @@ namespace shamrock::solvergraph {
          * @param edge Shared pointer to the edge instance
          * @throws std::invalid_argument if an edge with the same name already exists
          */
-        inline void register_edge_ptr_base(const std::string &name, std::shared_ptr<IEdge> edge) {
+        inline std::shared_ptr<IEdge> register_edge_ptr_base(
+            const std::string &name, std::shared_ptr<IEdge> edge) {
             const auto [it, inserted] = edges.try_emplace(name, std::move(edge));
             if (!inserted) {
                 shambase::throw_with_loc<std::invalid_argument>(
                     shambase::format("Edge already exists: {}", name));
             }
+            return it->second;
         }
 
         /**
@@ -200,9 +204,10 @@ namespace shamrock::solvergraph {
          * @throws std::invalid_argument if a node with the same name already exists
          */
         template<class T>
-        inline void register_node(const std::string &name, T &&node) {
+        inline std::shared_ptr<T> register_node(const std::string &name, T &&node) {
             static_assert(std::is_base_of<INode, T>::value, "T must derive from INode");
             register_node_ptr_base(name, std::make_shared<T>(std::forward<T>(node)));
+            return get_node_ptr<T>(name);
         }
 
         /**
@@ -218,9 +223,10 @@ namespace shamrock::solvergraph {
          * @throws std::invalid_argument if an edge with the same name already exists
          */
         template<class T>
-        inline void register_edge(const std::string &name, T &&edge) {
+        inline std::shared_ptr<T> register_edge(const std::string &name, T &&edge) {
             static_assert(std::is_base_of<IEdge, T>::value, "T must derive from IEdge");
             register_edge_ptr_base(name, std::make_shared<T>(std::forward<T>(edge)));
+            return get_edge_ptr<T>(name);
         }
 
         /**

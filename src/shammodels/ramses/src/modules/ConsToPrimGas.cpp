@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -14,9 +14,10 @@
  *
  */
 
-#include "shammodels/ramses/modules/ConsToPrimGas.hpp"
+#include "shambase/assert.hpp"
 #include "shambackends/kernel_call_distrib.hpp"
 #include "shammath/riemann.hpp"
+#include "shammodels/ramses/modules/ConsToPrimGas.hpp"
 #include "shamrock/patch/PatchDataField.hpp"
 #include "shamsys/NodeInstance.hpp"
 
@@ -59,6 +60,8 @@ namespace {
 
                     auto prim_state = shammath::cons_to_prim(conststate, gamma);
 
+                    SHAM_ASSERT(prim_state.press >= 0.0);
+
                     vel[i] = prim_state.vel;
                     P[i]   = prim_state.press;
                 });
@@ -92,7 +95,7 @@ namespace shammodels::basegodunov::modules {
     }
 
     template<class Tvec>
-    std::string NodeConsToPrimGas<Tvec>::_impl_get_tex() {
+    std::string NodeConsToPrimGas<Tvec>::_impl_get_tex() const {
 
         auto block_count = get_ro_edge_base(0).get_tex_symbol();
         auto rho         = get_ro_edge_base(1).get_tex_symbol();

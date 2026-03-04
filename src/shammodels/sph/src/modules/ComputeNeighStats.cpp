@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -80,10 +80,10 @@ namespace shammodels::sph::modules {
             {
                 std::vector<u32> neigh_cnt_vec = neigh_count_true.copy_to_stdvec();
 
-                double max  = *std::max_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
-                double min  = *std::min_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
-                double mean = std::accumulate(neigh_cnt_vec.begin(), neigh_cnt_vec.end(), 0.0)
-                              / neigh_cnt_vec.size();
+                double max    = *std::max_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
+                double min    = *std::min_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
+                double mean   = std::accumulate(neigh_cnt_vec.begin(), neigh_cnt_vec.end(), 0.0)
+                                / neigh_cnt_vec.size();
                 double stddev = std::sqrt(
                     std::accumulate(
                         neigh_cnt_vec.begin(),
@@ -99,10 +99,10 @@ namespace shammodels::sph::modules {
             {
                 std::vector<u32> neigh_cnt_vec = neigh_count_all.copy_to_stdvec();
 
-                double max  = *std::max_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
-                double min  = *std::min_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
-                double mean = std::accumulate(neigh_cnt_vec.begin(), neigh_cnt_vec.end(), 0.0)
-                              / neigh_cnt_vec.size();
+                double max    = *std::max_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
+                double min    = *std::min_element(neigh_cnt_vec.begin(), neigh_cnt_vec.end());
+                double mean   = std::accumulate(neigh_cnt_vec.begin(), neigh_cnt_vec.end(), 0.0)
+                                / neigh_cnt_vec.size();
                 double stddev = std::sqrt(
                     std::accumulate(
                         neigh_cnt_vec.begin(),
@@ -118,7 +118,7 @@ namespace shammodels::sph::modules {
     }
 
     template<class Tvec>
-    std::string ComputeNeighStats<Tvec>::_impl_get_tex() {
+    std::string ComputeNeighStats<Tvec>::_impl_get_tex() const {
         return "TODO";
     }
 

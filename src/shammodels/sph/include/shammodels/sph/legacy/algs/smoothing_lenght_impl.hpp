@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -212,9 +212,9 @@ namespace impl {
                 auto acc_hpart = pdat_merge.get_field<f32>(ihpart)
                                      .get_buf()
                                      ->get_access<sycl::access::mode::read>(cgh);
-                auto r = pdat_merge.get_field<f32_3>(ixyz)
-                             .get_buf()
-                             ->get_access<sycl::access::mode::read>(cgh);
+                auto r         = pdat_merge.get_field<f32_3>(ixyz)
+                                     .get_buf()
+                                     ->get_access<sycl::access::mode::read>(cgh);
 
                 Rta tree_acc(radix_t, cgh);
 
@@ -284,7 +284,7 @@ namespace impl {
                             using namespace shamrock::sph;
 
                             f32 rho_ha = rho_h(part_mass, h_a, Kernel::hfactd);
-                            f32 new_h  = newtown_iterate_new_h(rho_ha, rho_sum, sumdWdh, h_a);
+                            f32 new_h  = newton_iterate_new_h(rho_ha, rho_sum, sumdWdh, h_a);
 
                             if (new_h < h_a * h_max_evol_m)
                                 new_h = h_max_evol_m * h_a;
@@ -336,9 +336,9 @@ namespace impl {
                 auto acc_hpart = pdat_merge.get_field<f64>(ihpart)
                                      .get_buf()
                                      ->get_access<sycl::access::mode::read>(cgh);
-                auto r = pdat_merge.get_field<f64_3>(ixyz)
-                             .get_buf()
-                             ->get_access<sycl::access::mode::read>(cgh);
+                auto r         = pdat_merge.get_field<f64_3>(ixyz)
+                                     .get_buf()
+                                     ->get_access<sycl::access::mode::read>(cgh);
 
                 Rta tree_acc(radix_t, cgh);
 

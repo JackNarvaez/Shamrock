@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -845,10 +845,10 @@ namespace shamalgs::numeric::details {
 
             cgh.parallel_for<KernelExclusivesum_sycl_jointalg<T, group_size>>(
                 sycl::nd_range<1>{corrected_len, group_size}, [=](sycl::nd_item<1> id) {
-                    T *first = acc_in.get_pointer();
+                    T *first = &(acc_in[0]);
                     T *last  = first + acc_in.size();
 
-                    T *first_out = acc_out.get_pointer();
+                    T *first_out = &(acc_out[0]);
 
                     T excl_val;
                     sycl::joint_inclusive_scan(

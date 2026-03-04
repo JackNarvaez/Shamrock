@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -279,8 +279,8 @@ inline typename RadixTree<u_morton, vec3>::template RadixTreeField<T> RadixTree<
         auto tree_field
             = sycl::accessor{*ret.radix_tree_field_buf, cgh, sycl::write_only, sycl::no_init};
 
-        auto cell_particle_ids = tree_reduced_morton_codes.buf_reduc_index_map
-                                     ->template get_access<sycl::access::mode::read>(cgh);
+        auto cell_particle_ids  = tree_reduced_morton_codes.buf_reduc_index_map
+                                      ->template get_access<sycl::access::mode::read>(cgh);
         auto particle_index_map = tree_morton_codes.buf_particle_index_map
                                       ->template get_access<sycl::access::mode::read>(cgh);
 
@@ -410,8 +410,8 @@ inline void RadixTree<u_morton, vec3>::for_each_leaf(
     queue.submit([&](sycl::handler &cgh) {
         auto particle_index_map = tree_morton_codes.buf_particle_index_map
                                       ->template get_access<sycl::access::mode::read>(cgh);
-        auto cell_index_map = tree_reduced_morton_codes.buf_reduc_index_map
-                                  ->template get_access<sycl::access::mode::read>(cgh);
+        auto cell_index_map     = tree_reduced_morton_codes.buf_reduc_index_map
+                                      ->template get_access<sycl::access::mode::read>(cgh);
         auto rchild_id
             = tree_struct.buf_rchild_id->template get_access<sycl::access::mode::read>(cgh);
         auto lchild_id

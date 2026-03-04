@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -58,6 +58,8 @@ namespace shamtree {
             : morton_codes_set(std::move(morton_codes_set)), reduce_code_count(reduce_code_count),
               buf_reduc_index_map(std::move(buf_reduc_index_map)),
               reduced_morton_codes(std::move(reduced_morton_codes)) {}
+
+        inline bool is_empty() const { return reduce_code_count == 0; }
 
         inline LeafCellIterator get_leaf_cell_iterator() const {
             return LeafCellIterator{morton_codes_set.map_morton_id_to_obj_id, buf_reduc_index_map};

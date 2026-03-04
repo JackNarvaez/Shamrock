@@ -3,32 +3,95 @@ name: Shamrock (Intel/LLVM)
 
 on:
   workflow_call:
+    inputs:
+      light_ci:
+        description: "Whether to run the light CI"
+        required: true
+        type: boolean
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      light_ci:
+        description: "Whether to run the light CI"
+        required: false
+        default: false
+        type: boolean
 
 
 jobs:
 
+  # on older self-hosted runner we must start the container with --shm-size=512m
+  # otherwise we get bus errors with intel mpi
+
+  set_matrix:
+    name: Set Intel/LLVM matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          if [[ "${{ inputs.light_ci }}" == "true" ]]; then
+            cat > matrix.json <<'JSON'
+          {
+            "include": [
+              {
+                "machine": "docker.intel_oneapi",
+                "container": "intel/oneapi",
+                "runtest": true,
+                "mpi_args": "",
+                "docker_options": "--shm-size=512m"
+              }
+            ]
+          }
+          JSON
+          else
+            cat > matrix.json <<'JSON'
+          {
+            "include": [
+              {
+                "machine": "ci.intel-llvm.cuda",
+                "container": "ghcr.io/shamrock-code/shamrock-ci:ubuntu22cuda12dpcpp",
+                "runtest": false,
+                "mpi_args": "--allow-run-as-root --bind-to socket:overload-allowed --oversubscribe"
+              },
+              {
+                "machine": "ci.intel-llvm.rocm",
+                "container": "ghcr.io/shamrock-code/shamrock-ci:ubuntu22rocm543dpcpp",
+                "runtest": false,
+                "mpi_args": "--allow-run-as-root --bind-to socket:overload-allowed --oversubscribe"
+              },
+              {
+                "machine": "docker.intel_oneapi",
+                "container": "intel/oneapi",
+                "runtest": true,
+                "mpi_args": "",
+                "docker_options": "--shm-size=512m"
+              }
+            ]
+          }
+          JSON
+          fi
+
+          {
+            echo "matrix<<EOF"
+            cat matrix.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
   shamrock_intel_llvm:
     name: Intel/llvm ${{ matrix.machine }}
+    needs: [set_matrix]
     runs-on: [self-hosted,  docker-runner]
 
     container:
       image: ${{ matrix.container }}
+      options: ${{ matrix.docker_options }}
 
     strategy:
-      matrix:
-        include:
-          - machine: ci.intel-llvm.cuda
-            container: ghcr.io/shamrock-code/shamrock-ci:ubuntu20cuda12dpcpp
-            runtest: false
-          - machine: ci.intel-llvm.rocm
-            container: ghcr.io/shamrock-code/shamrock-ci:ubuntu20rocm543dpcpp
-            runtest: false
-          - machine: docker.intel_oneapi
-            container: intel/oneapi
-            runtest: false # They run but float to int conversion has not the same precision
+      matrix: ${{ fromJSON(needs.set_matrix.outputs.matrix) }}
 
     timeout-minutes: 60
     steps:
@@ -56,6 +119,28 @@ jobs:
         run: git diff ${{ github.event.pull_request.base.sha }} HEAD
       #### End Checkout part ####
 
+      - name: Install ccache
+        if: matrix.container == 'intel/oneapi'
+        run: |
+          apt update
+          apt install -y ccache
+
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ github.job }}-${{matrix.machine}}
+          verbose: 2
+
+      - name: Configure ccache
+        shell: bash
+        run: |
+          echo " ----- ccache configuration ----- "
+          echo " Old configuration: "
+          ccache -p
+          echo " ----- New configuration:   ----- "
+          ccache -o compiler_check='%compiler% -dumpmachine; %compiler% -dumpversion'
+          ccache -p
+          echo " ----- ccache configuration done ----- "
+
       - name: Setup env
         run : ./env/new-env --machine ${{ matrix.machine }} --builddir build --
 
@@ -81,6 +166,7 @@ jobs:
         shell: bash # In docker container github action default to sh
         run: |
           cd build
+          export NINJA_STATUS="[%f/%t j=%r] "
           source ./activate && shammake install
 
       - name: Pull reference files
@@ -112,19 +198,19 @@ jobs:
         if: matrix.runtest
         run: |
           cd build
-          mpirun --allow-run-as-root --bind-to socket:overload-allowed --oversubscribe -n 2 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
+          mpirun ${{ matrix.mpi_args }} -n 2 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
 
       - name: run Shamrock Unittests world_size = 3
         if: matrix.runtest
         run: |
           cd build
-          mpirun --allow-run-as-root --bind-to socket:overload-allowed --oversubscribe -n 3 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
+          mpirun ${{ matrix.mpi_args }} -n 3 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
 
       - name: run Shamrock Unittests world_size = 4
         if: matrix.runtest
         run: |
           cd build
-          mpirun --allow-run-as-root --bind-to socket:overload-allowed --oversubscribe -n 4 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
+          mpirun ${{ matrix.mpi_args }} -n 4 ./shamrock_test --color --smi-full  --sycl-cfg 0:0 --loglevel 0 --benchmark-mpi
 
       - name: Try starting Shamrock (installed version)
         shell: bash # In docker container github action default to sh

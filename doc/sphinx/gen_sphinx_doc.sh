@@ -17,6 +17,11 @@ pip_list=(
     "memory-profiler"
     "sphinx-copybutton"
     "sphinx_design"
+    "sphinxcontrib-video"
+    "sympy"
+    "matplotlib"
+    "numpy"
+    "scipy"
     )
 
 for package in "${pip_list[@]}"; do
@@ -33,7 +38,11 @@ set -e
 
 cd "$(dirname "$0")"
 
-make html
+# Autodetect number of CPU cores, fallback to 1 if nproc is not available
+PARALLEL_JOBS=$(nproc 2>/dev/null || echo "1")
+echo "Using parallel jobs: ${PARALLEL_JOBS}"
+
+make html SPHINXOPTS="-j ${PARALLEL_JOBS}"
 
 set +e
 

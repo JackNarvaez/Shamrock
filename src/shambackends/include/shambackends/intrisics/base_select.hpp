@@ -1,7 +1,7 @@
 // -------------------------------------------------------//
 //
 // SHAMROCK code for hydrodynamics
-// Copyright (c) 2021-2025 Timothée David--Cléris <tim.shamrock@proton.me>
+// Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
 // SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
 // Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
 //
@@ -50,11 +50,6 @@
     #define _IS_ONEAPI_SMCP_CUDA
 #elif defined(SYCL_IMPLEMENTATION_ONEAPI) && defined(__SYCL_DEVICE_ONLY__) && defined(__AMDGCN__)
     #define _IS_ONEAPI_SMCP_HIP
-    #if __AMDGCN_WAVEFRONT_SIZE == 64
-        #define _IS_ONEAPI_SMCP_HIP_WAVEFRONT64
-    #elif __AMDGCN_WAVEFRONT_SIZE == 32
-        #define _IS_ONEAPI_SMCP_HIP_WAVEFRONT32
-    #endif
 #elif defined(SYCL_IMPLEMENTATION_ONEAPI) && defined(__SYCL_DEVICE_ONLY__)                         \
     && (defined(__SPIR__) || defined(__SPIRV__))
     #define _IS_ONEAPI_SMCP_INTEL_SPIRV
