@@ -544,6 +544,11 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
     const u32 ipsi_on_ch  = pdl.get_field_idx<Tscal>("psi/ch");
     const u32 idpsi_on_ch = pdl.get_field_idx<Tscal>("dpsi/ch");
     const u32 idrho_dt    = pdl.get_field_idx<Tscal>("drho/dt");
+    const u32 icurlB      = pdl.get_field_idx<Tvec>("curlB");
+    const u32 idivB       = pdl.get_field_idx<Tscal>("divB");
+    const u32 idudtAV     = pdl.get_field_idx<Tscal>("dudtAV");
+    const u32 idudtAR     = pdl.get_field_idx<Tscal>("dudtAR");
+
 
     bool do_MHD_debug       = solver_config.do_MHD_debug();
     const u32 imag_pressure = (do_MHD_debug) ? pdl.get_field_idx<Tvec>("mag_pressure") : -1;
@@ -554,9 +559,6 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
     const u32 ipsi_diff     = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_diff") : -1;
     const u32 ipsi_cons     = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_cons") : -1;
     const u32 iu_mhd        = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("u_mhd") : -1;
-
-    // Tscal mu_0 = 1.;
-    // Tscal const mu_0 = solver_config.get_constant_mu_0();
 
     shamrock::patch::PatchDataLayerLayout &ghost_layout
         = shambase::get_check_ref(storage.ghost_layout.get());
@@ -655,6 +657,10 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
     auto dB_on_rho_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tvec>>("dB/rho");
     auto dpsi_on_ch_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dpsi/ch");
     auto drho_dt_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("drho/dt");
+    auto divB_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("divB");
+    auto curlB_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tvec>>("curlB");
+    auto dudtAV_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dudtAV");
+    auto dudtAR_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dudtAR");
 
     auto gpart_mass
         = solver_graph.get_edge_ptr<shamrock::solvergraph::ScalarEdge<Tscal>>("gpart_mass");
@@ -708,7 +714,11 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
             duint_refs,
             dB_on_rho_refs,
             dpsi_on_ch_refs,
-            drho_dt_refs);
+            drho_dt_refs,
+            divB_refs,
+            curlB_refs,
+            dudtAV_refs,
+            dudtAR_refs);
     }
     node->evaluate();
 }

@@ -127,6 +127,16 @@ namespace shammodels::sph::modules {
             fnum++;
         }
 
+        if (solver_config.has_field_divB()) {
+            fnum++;
+        }
+
+        if (solver_config.has_field_djvi2()) {
+            fnum++;
+            fnum++;
+            fnum++;
+        }
+
         if (solver_config.dust_config.has_epsilon_field()) {
             const u32 ndust = solver_config.dust_config.get_dust_nvar();
             fnum += ndust;
@@ -190,9 +200,23 @@ namespace shammodels::sph::modules {
             vtk_dump_add_field<Tscal>(scheduler(), writter, ipsi_on_ch, "psi/ch");
         }
 
+        if (solver_config.has_field_divB()) {
+            const u32 idivB = pdl.get_field_idx<Tscal>("divB");
+            vtk_dump_add_field<Tscal>(scheduler(), writter, idivB, "divB");
+        }
+
         if (solver_config.has_field_curlB()) {
             const u32 icurlB = pdl.get_field_idx<Tvec>("curlB");
             vtk_dump_add_field<Tvec>(scheduler(), writter, icurlB, "curlB");
+        }
+
+        if (solver_config.has_field_djvi2()) {
+            const u32 idjvi2 = pdl.get_field_idx<Tscal>("djvi2");
+            const u32 idudtAV = pdl.get_field_idx<Tscal>("dudtAV");
+            const u32 idudtAR = pdl.get_field_idx<Tscal>("dudtAR");
+            vtk_dump_add_field<Tscal>(scheduler(), writter, idjvi2, "djvi2");
+            vtk_dump_add_field<Tscal>(scheduler(), writter, idudtAV, "dudtAV");
+            vtk_dump_add_field<Tscal>(scheduler(), writter, idudtAR, "dudtAR");
         }
 
         vtk_dump_add_compute_field(scheduler(), writter, density, "rho");

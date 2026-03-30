@@ -75,8 +75,13 @@ struct shammodels::sph::MHDConfig {
         return is_divB;
     }
 
+    inline bool has_djvi2_field() {
+        bool is_djvi2 = bool(std::get_if<IdealMHD_constrained_hyper_para>(&config));
+        return is_djvi2;
+    }
+
     inline bool has_curlB_field() {
-        bool is_curlB = bool(std::get_if<NonIdealMHD>(&config));
+        bool is_curlB = bool(std::get_if<IdealMHD_constrained_hyper_para>(&config));
         return is_curlB;
     }
 

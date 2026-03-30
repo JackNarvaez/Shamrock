@@ -54,7 +54,11 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
         Tscal *__restrict duint,
         Tvec *__restrict dB_on_rho,
         Tscal *__restrict dpsi_on_ch,
-        Tscal *__restrict drho_dt) const {
+        Tscal *__restrict drho_dt,
+        Tscal *__restrict divB,
+        Tvec *__restrict curlB,
+        Tscal *__restrict dudtAV,
+        Tscal *__restrict dudtAR) const {
 
         using namespace shamrock::sph;
 
@@ -87,6 +91,11 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
         Tvec magnetic_eq{0, 0, 0};
         Tscal psi_eq  = 0;
         Tscal drho_eq = 0;
+
+        Tscal divB_a = 0;
+        Tvec curlB_a{0, 0, 0};
+        Tscal dudtAV_a = 0;
+        Tscal dudtAR_a = 0;
 
         Tvec mag_pressure_term{0, 0, 0};
         Tvec mag_tension_term{0, 0, 0};
@@ -187,7 +196,11 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
                 psi_propag_term,
                 psi_diff_term,
                 psi_cons_term,
-                u_mhd_term);
+                u_mhd_term,
+                divB_a,
+                curlB_a,
+                dudtAV_a,
+                dudtAR_a);
         });
 
         axyz[id_a]       = force_pressure;
@@ -195,6 +208,10 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
         dB_on_rho[id_a]  = magnetic_eq;
         dpsi_on_ch[id_a] = psi_eq - sigma_mhd * psi_a / h_a;
         drho_dt[id_a]    = drho_eq;
+        divB[id_a]       = divB_a;
+        curlB[id_a]      = curlB_a;
+        dudtAV[id_a]     = dudtAV_a;
+        dudtAR[id_a]     = dudtAR_a;
     }
 };
 
@@ -227,8 +244,10 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKerne
     edges.dB_on_rho.ensure_sizes(part_counts);
     edges.dpsi_on_ch.ensure_sizes(part_counts);
     edges.drho_dt.ensure_sizes(part_counts);
-
-
+    edges.divB.ensure_sizes(part_counts);
+    edges.curlB.ensure_sizes(part_counts);
+    edges.dudtAV.ensure_sizes(part_counts);
+    edges.dudtAR.ensure_sizes(part_counts);
 
     const Tscal pmass   = edges.gpart_mass.value;
     const Tscal alpha_u = edges.alpha_u.value;
@@ -257,7 +276,11 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKerne
             edges.duint.get_spans(),
             edges.dB_on_rho.get_spans(),
             edges.dpsi_on_ch.get_spans(),
-            edges.drho_dt.get_spans()},
+            edges.drho_dt.get_spans(),
+            edges.divB.get_spans(),
+            edges.curlB.get_spans(),
+            edges.dudtAV.get_spans(),
+            edges.dudtAR.get_spans()},
         part_counts,
         ComputeKernel{pmass, alpha_u, beta_AV, sigma_mhd, mu_0});
 }

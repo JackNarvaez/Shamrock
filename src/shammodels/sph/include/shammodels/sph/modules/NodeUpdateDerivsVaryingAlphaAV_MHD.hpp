@@ -55,7 +55,11 @@
     X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, duint)                                          \
     X_RW(shamrock::solvergraph::IFieldSpan<Tvec>, dB_on_rho)                                       \
     X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, dpsi_on_ch)                                     \
-    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, drho_dt)                                        
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, drho_dt)                                        \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, divB)                                           \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tvec>, curlB)                                           \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, dudtAV)                                         \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, dudtAR)
 
 namespace shammodels::sph::modules {
 

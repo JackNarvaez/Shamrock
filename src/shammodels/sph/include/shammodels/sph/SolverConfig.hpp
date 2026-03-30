@@ -853,6 +853,9 @@ struct shammodels::sph::SolverConfig {
     /// @brief Whether the solver has a field for divB
     inline bool has_field_divB() { return mhd_config.has_divB_field(); }
 
+    /// @brief Whether the solver has a field for djvi2
+    inline bool has_field_djvi2() { return mhd_config.has_djvi2_field(); }
+
     /// @brief Whether the solver has a field for curlB
     inline bool has_field_curlB() { return mhd_config.has_curlB_field() && (dim == 3); }
 

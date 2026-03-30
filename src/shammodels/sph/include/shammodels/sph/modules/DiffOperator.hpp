@@ -43,6 +43,7 @@ namespace shammodels::sph::modules {
 
         void update_divv();
         void update_curlv();
+        void update_djvi2();
 
         private:
         inline PatchScheduler &scheduler() { return shambase::get_check_ref(context.sched); }

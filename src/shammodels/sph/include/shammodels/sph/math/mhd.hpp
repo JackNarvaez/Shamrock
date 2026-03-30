@@ -32,6 +32,22 @@ namespace shamrock::sph::mhd {
 
     enum MHDType { Ideal = 0, NonIdeal = 1 };
 
+    // Magnetic current Eq. 201 Phantom paper
+    template<class Tvec, class Tscal>
+    inline Tvec curlB_operator(
+        Tscal m_b,
+        Tscal iomega_rho_a,
+        Tvec B_a,
+        Tvec B_b,
+        Tvec nabla_Wab_ha) {
+
+        Tvec B_cross_grad_W_a = sycl::cross(B_a-B_b, nabla_Wab_ha);
+
+        Tvec J_a = m_b * (iomega_rho_a * (B_cross_grad_W_a));
+
+        return J_a;
+    }
+
     // mag tension form the Tricco 2023 formula
     template<class Tvec, class Tscal>
     inline Tvec B_dot_grad_W(
@@ -111,7 +127,7 @@ namespace shamrock::sph::mhd {
                 frac_divB = (10.0 - betai)*0.125;
             }
         }
-
+        frac_divB = 0.5;
         return -frac_divB * B_a * m_b * (acc_fdivB_a + acc_fdivB_b) / mu_0;
     }
 
@@ -250,7 +266,11 @@ namespace shamrock::sph::mhd {
         Tscal &psi_diff,
         Tscal &psi_cons,
 
-        Tscal &u_pressure_viscous_heating) {
+        Tscal &u_pressure_viscous_heating,
+        Tscal &divB_term,
+        Tvec &curlB_term,
+        Tscal &dudtAV_term,
+        Tscal &dudtAR_term) {
 
         using namespace shamrock::sph;
 
@@ -272,6 +292,7 @@ namespace shamrock::sph::mhd {
 
         Tvec sum_mag_tension, sum_fdivB    = {0., 0., 0.};
         Tscal sum_psi_propag, sum_psi_diff = 0.;
+        Tscal du_art_res = 0.;
 
         // dv/dt = gas_pressure_pishock + magnetic_pressure_term + sum_mag_tension + sum_fdivB;
         // du/dt = pressure_term + viscous_heating + shock_conductivity + artificial_resistivity;
@@ -348,9 +369,10 @@ namespace shamrock::sph::mhd {
             Fab_a * omega_a_rho_a_inv,
             Fab_b / (rho_b * omega_b));
 
-        du_dt += lambda_artes(
+        du_art_res += lambda_artes(
             pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b);
 
+        du_dt += du_art_res;
         // end du/dt terms
 
         // d(B/rho)/dt terms
@@ -410,6 +432,15 @@ namespace shamrock::sph::mhd {
 
         // for conservative checks
         drho_dt += (1. / omega_a) * pmass * sycl::dot(v_ab, nabla_Wab_ha);
+
+        divB_term += - sum_psi_propag/v_shock_a;
+
+        curlB_term += curlB_operator(pmass, omega_a_rho_a_inv, B_a, B_b, nabla_Wab_ha);
+
+        dudtAV_term += sph::duint_dt_pressure(
+            pmass, qa_ab, omega_rho_sq_a_inv, v_ab, nabla_Wab_ha);
+        
+        dudtAR_term += du_art_res;
     }
 
     template<class Kernel, class Tvec, class Tscal, MHDType MHD_mode = Ideal>
@@ -476,7 +507,7 @@ namespace shamrock::sph::mhd {
         Tscal vsig_a = shamphys::MHD_physics<Tvec, Tscal>::vsig_MHD(
             v_ab, r_ab_unit, cs_a, B_a, rho_a, mu_0, 1., 1.);
         Tscal vsig_b = shamphys::MHD_physics<Tvec, Tscal>::vsig_MHD(
-            v_ab, r_ab_unit, cs_a, B_b, rho_b, mu_0, 1., 1.);
+            v_ab, r_ab_unit, cs_b, B_b, rho_b, mu_0, 1., 1.);
 
         Tscal dWab_a = Fab_a;
         Tscal dWab_b = Fab_b;
@@ -577,7 +608,7 @@ namespace shamrock::sph::mhd {
             = 0.5 * pmass * (rho_diss_term_a + rho_diss_term_b) * (B_a - B_b) * vsig_B;
 
         dB_on_rho_dt
-            += v_ab * dB_on_rho_induction_term(pmass, isub_fact_a, B_a, r_ab_unit * dWab_b);
+            += v_ab * dB_on_rho_induction_term(pmass, isub_fact_a, B_a, r_ab_unit * dWab_a);
 
         dB_on_rho_dt += dB_on_rho_psi_term(
             pmass,

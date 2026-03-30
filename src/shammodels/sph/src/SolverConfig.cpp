@@ -62,10 +62,15 @@ namespace shammodels::sph {
         }
 
         if (has_field_B_on_rho()) {
-
             pdl.add_field<Tvec>("B/rho", 1);
             pdl.add_field<Tvec>("dB/rho", 1);
             pdl.add_field<Tscal>("drho/dt", 1);
+        }
+
+        if (has_field_djvi2()) {
+            pdl.add_field<Tscal>("djvi2", 1);
+            pdl.add_field<Tscal>("dudtAV", 1);
+            pdl.add_field<Tscal>("dudtAR", 1);
         }
 
         if (has_field_psi_on_ch()) {
@@ -138,8 +143,18 @@ namespace shammodels::sph {
             ghost_layout.add_field<Tscal>("psi/ch", 1);
         }
 
+        if (has_field_divB()) {
+            ghost_layout.add_field<Tscal>("divB", 1);
+        }
+
         if (has_field_curlB()) {
             ghost_layout.add_field<Tvec>("curlB", 1);
+        }
+
+        if (has_field_djvi2()) {
+            ghost_layout.add_field<Tscal>("djvi2", 1);
+            ghost_layout.add_field<Tscal>("dudtAV", 1);
+            ghost_layout.add_field<Tscal>("dudtAR", 1);
         }
 
         if (dust_config.has_epsilon_field()) {
