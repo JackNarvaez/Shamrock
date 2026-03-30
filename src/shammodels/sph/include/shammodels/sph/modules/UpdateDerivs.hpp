@@ -67,6 +67,7 @@ namespace shammodels::sph::modules {
         using NonIdealMHD = typename Cfg_MHD::NonIdealMHD;
 
         void update_derivs_MHD(IdealMHD cfg);
+        void update_derivs_cd10_mhd(IdealMHD cfg);
     };
 
 } // namespace shammodels::sph::modules

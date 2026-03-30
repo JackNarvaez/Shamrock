@@ -114,6 +114,18 @@ namespace shammodels::sph::modules {
         if (solver_config.compute_luminosity) {
             fnum++;
         }
+        // mhd
+        if (solver_config.has_field_B_on_rho()) {
+            fnum++;
+        }
+
+        if (solver_config.has_field_psi_on_ch()) {
+            fnum++;
+        }
+
+        if (solver_config.has_field_curlB()) {
+            fnum++;
+        }
 
         if (solver_config.dust_config.has_epsilon_field()) {
             const u32 ndust = solver_config.dust_config.get_dust_nvar();
@@ -165,6 +177,22 @@ namespace shammodels::sph::modules {
         if (solver_config.compute_luminosity) {
             const u32 iluminosity = pdl.get_field_idx<Tscal>("luminosity");
             vtk_dump_add_field<Tscal>(scheduler(), writter, iluminosity, "luminosity");
+        }
+
+        // mhd
+        if (solver_config.has_field_B_on_rho()) {
+            const u32 iB_on_rho = pdl.get_field_idx<Tvec>("B/rho");
+            vtk_dump_add_field<Tvec>(scheduler(), writter, iB_on_rho, "B/rho");
+        }
+
+        if (solver_config.has_field_psi_on_ch()) {
+            const u32 ipsi_on_ch = pdl.get_field_idx<Tscal>("psi/ch");
+            vtk_dump_add_field<Tscal>(scheduler(), writter, ipsi_on_ch, "psi/ch");
+        }
+
+        if (solver_config.has_field_curlB()) {
+            const u32 icurlB = pdl.get_field_idx<Tvec>("curlB");
+            vtk_dump_add_field<Tvec>(scheduler(), writter, icurlB, "curlB");
         }
 
         vtk_dump_add_compute_field(scheduler(), writter, density, "rho");

@@ -125,6 +125,12 @@ void shammodels::sph::modules::UpdateViscosity<Tvec, SPHKernel>::update_artifici
     StackEntry stack_loc{};
     shamlog_debug_ln("UpdateViscosity", "Updating alpha viscosity (Cullen & Dehnen 2010)");
 
+    shamlog_debug_ln("alpha_max = {}", cfg.alpha_max);
+    shamlog_debug_ln("alpha_min = {}", cfg.alpha_min);
+    shamlog_debug_ln("sigma_decay = {}", cfg.sigma_decay);
+    shamlog_debug_ln("alpha_u = {}", cfg.alpha_u);
+    shamlog_debug_ln("beta_AV = {}", cfg.beta_AV);
+
     using namespace shamrock::patch;
     PatchDataLayerLayout &pdl = scheduler().pdl_old();
     const u32 ialpha_AV       = pdl.get_field_idx<Tscal>("alpha_AV");

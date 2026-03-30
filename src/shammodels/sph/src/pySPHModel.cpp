@@ -187,12 +187,14 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             py::arg("beta_AV"))
         .def(
             "set_IdealMHD",
-            [](TConfig &self, Tscal sigma_mhd, Tscal sigma_u) {
-                self.set_IdealMHD({sigma_mhd, sigma_u});
+            [](TConfig &self, Tscal alpha_u, Tscal beta_AV, Tscal sigma_mhd, Tscal mu_0) {
+                self.set_IdealMHD({alpha_u, beta_AV, sigma_mhd, mu_0});
             },
             py::kw_only(),
+            py::arg("alpha_u"),
+            py::arg("beta_AV"),
             py::arg("sigma_mhd"),
-            py::arg("sigma_u"))
+            py::arg("mu_0"))
         .def(
             "set_self_gravity_none",
             [](TConfig &self) {

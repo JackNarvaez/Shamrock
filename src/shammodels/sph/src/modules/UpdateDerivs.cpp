@@ -27,6 +27,7 @@
 #include "shammodels/sph/math/mhd.hpp"
 #include "shammodels/sph/math/q_ab.hpp"
 #include "shammodels/sph/modules/NodeUpdateDerivsVaryingAlphaAV.hpp"
+#include "shammodels/sph/modules/NodeUpdateDerivsVaryingAlphaAV_MHD.hpp"
 #include "shammodels/sph/modules/UpdateDerivs.hpp"
 #include "shamphys/mhd.hpp"
 #include "shamrock/patch/PatchDataFieldSpan.hpp"
@@ -38,27 +39,23 @@
 template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs() {
 
-    Cfg_AV cfg_av   = solver_config.artif_viscosity;
+    Cfg_AV  cfg_av  = solver_config.artif_viscosity;
     Cfg_MHD cfg_mhd = solver_config.mhd_config;
 
-    if (Constant *v = std::get_if<Constant>(&cfg_av.config)) {
-        update_derivs_constantAV(*v);
-    } else if (VaryingMM97 *v = std::get_if<VaryingMM97>(&cfg_av.config)) {
-        update_derivs_mm97(*v);
-    } else if (VaryingCD10 *v = std::get_if<VaryingCD10>(&cfg_av.config)) {
-        update_derivs_cd10(*v);
-    } else if (ConstantDisc *v = std::get_if<ConstantDisc>(&cfg_av.config)) {
-        update_derivs_disc_visco(*v);
-    } else if (IdealMHD *v = std::get_if<IdealMHD>(&cfg_mhd.config)) {
-        update_derivs_MHD(*v);
-    } else if (NonIdealMHD *v = std::get_if<NonIdealMHD>(&cfg_mhd.config)) {
-        shambase::throw_unimplemented();
-    } else if (NoneMHD *v = std::get_if<NoneMHD>(&cfg_mhd.config)) {
-        shambase::throw_unimplemented();
-    } else if (None *v = std::get_if<None>(&cfg_av.config)) {
+    if (IdealMHD *mhd = std::get_if<IdealMHD>(&cfg_mhd.config)) {
+        if (VaryingCD10 *v = std::get_if<VaryingCD10>(&cfg_av.config)) {
+            update_derivs_cd10_mhd(*mhd);
+        } else {
+            update_derivs_MHD(*mhd);
+        }
+    } else if (NonIdealMHD *mhd = std::get_if<NonIdealMHD>(&cfg_mhd.config)) {
         shambase::throw_unimplemented();
     } else {
-        shambase::throw_unimplemented();
+        if      (Constant     *v = std::get_if<Constant>    (&cfg_av.config)) { update_derivs_constantAV(*v); }
+        else if (VaryingMM97  *v = std::get_if<VaryingMM97> (&cfg_av.config)) { update_derivs_mm97(*v);       }
+        else if (VaryingCD10  *v = std::get_if<VaryingCD10> (&cfg_av.config)) { update_derivs_cd10(*v);       }
+        else if (ConstantDisc *v = std::get_if<ConstantDisc>(&cfg_av.config)) { update_derivs_disc_visco(*v); }
+        else { shambase::throw_unimplemented(); }
     }
 }
 
@@ -395,6 +392,8 @@ template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10(VaryingCD10 cfg) {
     StackEntry stack_loc{};
 
+    shamlog_debug_ln("UpdateDerivs", "Updating derivs: CD AV");
+
     using namespace shamrock;
     using namespace shamrock::patch;
 
@@ -516,6 +515,204 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
     }
     node->evaluate();
 }
+
+
+template<class Tvec, template<class> class SPHKernel>
+void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10_mhd(IdealMHD cfg) {
+    StackEntry stack_loc{};
+
+    shamlog_debug_ln("UpdateDerivs", "Updating derivs: MHD + CD AV");
+
+    shamlog_debug_ln("alpha_u = {}", cfg.alpha_u);
+    shamlog_debug_ln("beta_AV = {}", cfg.beta_AV);
+    shamlog_debug_ln("sigma_mhd = {}", cfg.sigma_mhd);
+    shamlog_debug_ln("mu_0 = {}", cfg.mu_0);
+
+    using namespace shamrock;
+    using namespace shamrock::patch;
+
+    PatchDataLayerLayout &pdl = scheduler().pdl_old();
+
+    const u32 ixyz        = pdl.get_field_idx<Tvec>("xyz");
+    const u32 ivxyz       = pdl.get_field_idx<Tvec>("vxyz");
+    const u32 iaxyz       = pdl.get_field_idx<Tvec>("axyz");
+    const u32 iuint       = pdl.get_field_idx<Tscal>("uint");
+    const u32 iduint      = pdl.get_field_idx<Tscal>("duint");
+    const u32 ihpart      = pdl.get_field_idx<Tscal>("hpart");
+    const u32 iB_on_rho   = pdl.get_field_idx<Tvec>("B/rho");
+    const u32 idB_on_rho  = pdl.get_field_idx<Tvec>("dB/rho");
+    const u32 ipsi_on_ch  = pdl.get_field_idx<Tscal>("psi/ch");
+    const u32 idpsi_on_ch = pdl.get_field_idx<Tscal>("dpsi/ch");
+    const u32 idrho_dt    = pdl.get_field_idx<Tscal>("drho/dt");
+
+    bool do_MHD_debug       = solver_config.do_MHD_debug();
+    const u32 imag_pressure = (do_MHD_debug) ? pdl.get_field_idx<Tvec>("mag_pressure") : -1;
+    const u32 imag_tension  = (do_MHD_debug) ? pdl.get_field_idx<Tvec>("mag_tension") : -1;
+    const u32 igas_pressure = (do_MHD_debug) ? pdl.get_field_idx<Tvec>("gas_pressure") : -1;
+    const u32 itensile_corr = (do_MHD_debug) ? pdl.get_field_idx<Tvec>("tensile_corr") : -1;
+    const u32 ipsi_propag   = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_propag") : -1;
+    const u32 ipsi_diff     = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_diff") : -1;
+    const u32 ipsi_cons     = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_cons") : -1;
+    const u32 iu_mhd        = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("u_mhd") : -1;
+
+    // Tscal mu_0 = 1.;
+    // Tscal const mu_0 = solver_config.get_constant_mu_0();
+
+    shamrock::patch::PatchDataLayerLayout &ghost_layout
+        = shambase::get_check_ref(storage.ghost_layout.get());
+    u32 ihpart_interf     = ghost_layout.get_field_idx<Tscal>("hpart");
+    u32 iuint_interf      = ghost_layout.get_field_idx<Tscal>("uint");
+    u32 ivxyz_interf      = ghost_layout.get_field_idx<Tvec>("vxyz");
+    u32 iomega_interf     = ghost_layout.get_field_idx<Tscal>("omega");
+    u32 iB_on_rho_interf  = ghost_layout.get_field_idx<Tvec>("B/rho");
+    u32 ipsi_on_ch_interf = ghost_layout.get_field_idx<Tscal>("psi/ch");
+
+    auto &merged_xyzh                                 = storage.merged_xyzh.get();
+    shamrock::solvergraph::Field<Tscal> &omega        = shambase::get_check_ref(storage.omega);
+    shambase::DistributedData<PatchDataLayer> &mpdats = storage.merged_patchdata_ghost.get();
+
+    auto &part_counts            = storage.part_counts;
+    auto &part_counts_with_ghost = storage.part_counts_with_ghost;
+    auto &xyz_refs               = storage.positions_with_ghosts;
+    auto &pressure_field         = storage.pressure;
+    auto &soundspeed_field       = storage.soundspeed;
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tscal>> uint_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tscal>>("uint", "u");
+    {
+        shambase::get_check_ref(uint_refs).set_refs(
+            mpdats.map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(iuint_interf));
+                }));
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tvec>> vxyz_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tvec>>("vxyz", "v");
+    {
+        shambase::get_check_ref(vxyz_refs).set_refs(
+            mpdats.map<std::reference_wrapper<PatchDataField<Tvec>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tvec>(ivxyz_interf));
+                }));
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tscal>> hpart_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tscal>>("hpart", "h");
+    { // if was just reset before this call
+        shambase::get_check_ref(hpart_refs)
+            .set_refs(mpdats.map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(ihpart_interf));
+                }));
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tscal>> omega_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tscal>>("omega", "omega");
+    {
+        shambase::get_check_ref(omega_refs)
+            .set_refs(mpdats.map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(iomega_interf));
+                }));
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tscal>> alpha_av_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tscal>>("alpha_av", "alpha_av");
+    {
+        shambase::DistributedData<std::reference_wrapper<PatchDataField<Tscal>>> refs{};
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            refs.add_obj(
+                cur_p.id_patch, std::ref(storage.alpha_av_ghost.get().get(cur_p.id_patch)));
+        });
+        shambase::get_check_ref(alpha_av_refs).set_refs(refs);
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tvec>> B_on_rho_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tvec>>("B/rho", "B/rho");
+    {
+        shambase::get_check_ref(B_on_rho_refs).set_refs(
+            mpdats.map<std::reference_wrapper<PatchDataField<Tvec>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tvec>(iB_on_rho_interf));
+                }));
+    }
+
+    std::shared_ptr<shamrock::solvergraph::FieldRefs<Tscal>> psi_on_ch_refs
+        = std::make_shared<shamrock::solvergraph::FieldRefs<Tscal>>("psi/ch", "psi/ch");
+    { // if was just reset before this call
+        shambase::get_check_ref(psi_on_ch_refs)
+            .set_refs(mpdats.map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(ipsi_on_ch_interf));
+                }));
+    }
+
+    shamrock::solvergraph::SolverGraph &solver_graph = storage.solver_graph;
+
+    auto axyz_refs  = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tvec>>("axyz");
+    auto duint_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("duint");
+    auto dB_on_rho_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tvec>>("dB/rho");
+    auto dpsi_on_ch_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dpsi/ch");
+    auto drho_dt_refs = solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("drho/dt");
+
+    auto gpart_mass
+        = solver_graph.get_edge_ptr<shamrock::solvergraph::ScalarEdge<Tscal>>("gpart_mass");
+
+    std::shared_ptr<shamrock::solvergraph::ScalarEdge<Tscal>> alpha_u
+        = std::make_shared<shamrock::solvergraph::ScalarEdge<Tscal>>("alpha_u", "alpha_u");
+    {
+        shambase::get_check_ref(alpha_u).value = cfg.alpha_u;
+    }
+    std::shared_ptr<shamrock::solvergraph::ScalarEdge<Tscal>> beta_AV
+        = std::make_shared<shamrock::solvergraph::ScalarEdge<Tscal>>("beta_AV", "beta_AV");
+    {
+        shambase::get_check_ref(beta_AV).value = cfg.beta_AV;
+    }
+
+    std::shared_ptr<shamrock::solvergraph::ScalarEdge<Tscal>> sigma_mhd
+        = std::make_shared<shamrock::solvergraph::ScalarEdge<Tscal>>("sigma_mhd", "sigma_mhd");
+    {
+        shambase::get_check_ref(sigma_mhd).value = cfg.sigma_mhd;
+    }
+
+    std::shared_ptr<shamrock::solvergraph::ScalarEdge<Tscal>> mu_0
+        = std::make_shared<shamrock::solvergraph::ScalarEdge<Tscal>>("mu_0", "mu_0");
+    {
+        shambase::get_check_ref(mu_0).value = cfg.mu_0;
+    }
+
+    std::shared_ptr<NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKernel>> node
+        = std::make_shared<NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKernel>>();
+    {
+        node->set_edges(
+            gpart_mass,
+            alpha_u,
+            beta_AV,
+            sigma_mhd,
+            mu_0,
+            part_counts,
+            part_counts_with_ghost,
+            xyz_refs,
+            hpart_refs,
+            vxyz_refs,
+            uint_refs,
+            omega_refs,
+            pressure_field,
+            soundspeed_field,
+            alpha_av_refs,
+            B_on_rho_refs,
+            psi_on_ch_refs,
+            storage.neigh_cache,
+            axyz_refs,
+            duint_refs,
+            dB_on_rho_refs,
+            dpsi_on_ch_refs,
+            drho_dt_refs);
+    }
+    node->evaluate();
+}
+
 
 template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_disc_visco(
@@ -978,7 +1175,6 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_MHD(
                         psi_b,
 
                         mu_0,
-                        sigma_mhd,
 
                         force_pressure,
                         tmpdU_pressure,
@@ -999,7 +1195,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_MHD(
                 axyz[id_a]       = force_pressure;
                 du[id_a]         = tmpdU_pressure;
                 dB_on_rho[id_a]  = magnetic_eq;
-                dpsi_on_ch[id_a] = psi_eq - psi_a / h_a;
+                dpsi_on_ch[id_a] = psi_eq - sigma_mhd * psi_a / h_a;
                 drho_dt[id_a]    = drho_eq;
 
                 if (do_MHD_debug) {
@@ -1010,7 +1206,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_MHD(
 
                     psi_propag[id_a] = psi_propag_term;
                     psi_diff[id_a]   = psi_diff_term;
-                    psi_cons[id_a]   = -psi_a / h_a;
+                    psi_cons[id_a]   = -sigma_mhd * psi_a / h_a;
 
                     u_mhd[id_a] = u_mhd_term;
                 }

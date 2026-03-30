@@ -807,7 +807,7 @@ struct shammodels::sph::SolverConfig {
     }
 
     /// @brief Whether to add debug fields to the pdl.
-    inline constexpr bool do_MHD_debug() { return false; }
+    inline constexpr bool do_MHD_debug() { return true; }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
     // Debug dump config (END)

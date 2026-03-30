@@ -133,6 +133,7 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
     if (has_B_field) {
         solver_graph.register_edge("B/rho", FieldRefs<Tvec>("B/rho", "B_{\\rho}"));
         solver_graph.register_edge("dB/rho", FieldRefs<Tvec>("dB/rho", "dB_{\\rho}"));
+        solver_graph.register_edge("drho/dt", FieldRefs<Tscal>("drho/dt", "d\\rho/dt"));
     }
     if (has_psi_field) {
         solver_graph.register_edge("psi/ch", FieldRefs<Tscal>("psi/ch", "\\psi_{\\rm ch}"));
@@ -266,6 +267,14 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
                     solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
                     solver_graph.get_edge_ptr<FieldRefs<Tvec>>("dB/rho"));
             attach_field_sequence.push_back(attach_dB_on_rho);
+
+            auto attach_drho_on_dt = solver_graph.register_node(
+                "attach_drho_on_dt", GetFieldRefFromLayer<Tscal>(pdl, "drho/dt"));
+            shambase::get_check_ref(attach_drho_on_dt)
+                .set_edges(
+                    solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
+                    solver_graph.get_edge_ptr<FieldRefs<Tscal>>("drho/dt"));
+            attach_field_sequence.push_back(attach_drho_on_dt);
         }
 
         if (has_psi_field) {

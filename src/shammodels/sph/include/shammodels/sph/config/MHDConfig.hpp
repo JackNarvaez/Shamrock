@@ -37,8 +37,10 @@ struct shammodels::sph::MHDConfig {
     struct None {};
 
     struct IdealMHD_constrained_hyper_para {
-        Tscal sigma_mhd = 0.1;
-        Tscal alpha_u   = 1.;
+        Tscal alpha_u     = 1.0;
+        Tscal beta_AV     = 2.0;
+        Tscal sigma_mhd   = 0.1;
+        Tscal mu_0        = 1.0;
     };
 
     struct NonIdealMHD {
@@ -92,7 +94,10 @@ struct shammodels::sph::MHDConfig {
             IdealMHD_constrained_hyper_para *v
             = std::get_if<IdealMHD_constrained_hyper_para>(&config)) {
             logger::raw_ln("  Config MHD  : Ideal MHD, constrained hyperbolic/parabolic treatment");
+            logger::raw_ln("  alpha_u    =", v->alpha_u);
+            logger::raw_ln("  beta_AV    =", v->beta_AV);
             logger::raw_ln("  sigma_mhd  =", v->sigma_mhd);
+            logger::raw_ln("  mu_0       =", v->mu_0);
         } else if (NonIdealMHD *v = std::get_if<NonIdealMHD>(&config)) {
             logger::raw_ln("  Config MHD Type : Non Ideal MHD");
             logger::raw_ln("  sigma_mhd   =", v->sigma_mhd);
@@ -130,8 +135,10 @@ namespace shammodels::sph {
         } else if (const IMHD *v = std::get_if<IMHD>(&p.config)) {
             j = {
                 {"mhd_type", "ideal_mhd_constrained_hyper_para"},
-                {"sigma_mhd", v->sigma_mhd},
                 {"alpha_u", v->alpha_u},
+                {"beta_AV", v->beta_AV},
+                {"sigma_mhd", v->sigma_mhd},
+                {"mu_0", v->mu_0},
             };
         } else if (const NonIdealMHD *v = std::get_if<NonIdealMHD>(&p.config)) {
             // Write the shear base, direction, and speed into the JSON object
@@ -176,8 +183,10 @@ namespace shammodels::sph {
         } else if (mhd_type == "ideal_mhd_constrained_hyper_para") {
             p.set(
                 IMHD{
-                    j.at("sigma_mhd").get<Tscal>(),
                     j.at("alpha_u").get<Tscal>(),
+                    j.at("beta_AV").get<Tscal>(),
+                    j.at("sigma_mhd").get<Tscal>(),
+                    j.at("mu_0").get<Tscal>(),
                 });
         } else if (mhd_type == "non_ideal_mhd") {
             p.set(
