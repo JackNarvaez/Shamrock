@@ -117,7 +117,7 @@ namespace shamrock::sph::mhd {
 
         Tscal acc_fdivB_a = sycl::dot(B_a, nabla_Wab_ha) * isub_fact_a;
         Tscal acc_fdivB_b = sycl::dot(B_b, nabla_Wab_hb) * isub_fact_b;
-        
+
         if (B2i > 0.0) {
             betai = 2.0*mu_0*P_a*B2i;
             if (betai < 2.0) {
@@ -127,7 +127,6 @@ namespace shamrock::sph::mhd {
                 frac_divB = (10.0 - betai)*0.125;
             }
         }
-        frac_divB = 0.5;
         return -frac_divB * B_a * m_b * (acc_fdivB_a + acc_fdivB_b) / mu_0;
     }
 
