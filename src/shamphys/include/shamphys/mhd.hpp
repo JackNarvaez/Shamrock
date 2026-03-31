@@ -35,7 +35,9 @@ namespace shamphys {
             Tscal vsig_B_a = sycl::sqrt(
                 v_cross_r[0] * v_cross_r[0] + v_cross_r[1] * v_cross_r[1]
                 + v_cross_r[2] * v_cross_r[2]);
-            return vsig_B_a;
+
+            Tscal alpha_B = 0.25;
+            return alpha_B * vsig_B_a;
         };
 
         inline static constexpr Tscal vsig_MHD(
