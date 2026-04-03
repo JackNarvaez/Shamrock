@@ -274,11 +274,12 @@ namespace shamrock::sph::mhd {
         using namespace shamrock::sph;
 
         Tscal omega_rho_sq_a_inv = sham::inv_sat_zero(omega_a * rho_a_sq);
-        Tscal rho_ab = rho_a * rho_b;
+        Tscal rho_ab = rho_a * rho_b;  // GDSPMHD
 
         Tvec  nabla_Wab_ha = r_ab_unit * Fab_a;
         Tvec  nabla_Wab_hb = r_ab_unit * Fab_b;
 
+        // If STSPMHD, then instead of rho_ab use rho_sq, also in magnetic pressure term
         Tscal isub_fact_a = sham::inv_sat_zero(rho_ab * omega_a);
         Tscal isub_fact_b = sham::inv_sat_zero(rho_ab * omega_b);
 

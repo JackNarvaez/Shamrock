@@ -39,7 +39,7 @@ struct shammodels::sph::MHDConfig {
     struct IdealMHD_constrained_hyper_para {
         Tscal alpha_u     = 1.0;
         Tscal beta_AV     = 2.0;
-        Tscal sigma_mhd   = 0.1;
+        Tscal sigma_mhd   = 1.0;
         Tscal mu_0        = 1.0;
     };
 
