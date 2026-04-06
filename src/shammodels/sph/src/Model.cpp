@@ -1304,10 +1304,12 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
         phdump.blocks[0].fill_vec("alpha", alpha);
 
         // MHD fields
-        phdump.blocks[3].fill_vec("B/rhox", Brhox);
-        phdump.blocks[3].fill_vec("B/rhoy", Brhoy);
-        phdump.blocks[3].fill_vec("B/rhoz", Brhoz);
-        phdump.blocks[3].fill_vec("psi/ch", psich);
+        for (auto &block : phdump.blocks) {
+            block.fill_vec("B/rhox", Brhox);
+            block.fill_vec("B/rhoy", Brhoy);
+            block.fill_vec("B/rhoz", Brhoz);
+            block.fill_vec("psi/ch", psich);
+        }
 
         for (u32 i = 0; i < x.size(); i++) {
             xyz.push_back({x[i], y[i], z[i]});
