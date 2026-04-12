@@ -59,6 +59,7 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
 
     const u32 idivv  = pdl.get_field_idx<Tscal>("divv");
     const u32 icurlv = pdl.get_field_idx<Tvec>("curlv");
+    const u32 idjvi2 = pdl.get_field_idx<Tscal>("djvi2");
 
     scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
         PatchDataLayer &mpdat = mpdats.get(cur_p.id_patch);
@@ -75,6 +76,7 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
         sham::DeviceBuffer<Tscal> &buf_divv   = pdat.get_field_buf_ref<Tscal>(idivv);
         sham::DeviceBuffer<Tvec> &buf_curlv   = pdat.get_field_buf_ref<Tvec>(icurlv);
         sham::DeviceBuffer<Tscal> &buf_dtdivv = pdat.get_field_buf_ref<Tscal>(idtdivv);
+        sham::DeviceBuffer<Tscal> &buf_djvi2  = pdat.get_field_buf_ref<Tscal>(idjvi2);
 
         sycl::range range_npart{pdat.get_obj_cnt()};
 
@@ -207,7 +209,7 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
 
         } else {
 
-            NamedStackEntry tmppp{"compute dtdivv + divcurl v"};
+            NamedStackEntry tmppp{"compute dtdivv + divcurl v + djvi2"};
 
             sham::DeviceQueue &queue = shamsys::instance::get_compute_scheduler().get_queue();
 
@@ -221,6 +223,7 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
             auto divv       = buf_divv.get_write_access(depends_list);
             auto curlv      = buf_curlv.get_write_access(depends_list);
             auto dtdivv     = buf_dtdivv.get_write_access(depends_list);
+            auto djvi2      = buf_djvi2.get_write_access(depends_list);
             auto ploop_ptrs = pcache.get_read_access(depends_list);
 
             auto e = queue.submit(depends_list, [&](sycl::handler &cgh) {
@@ -322,8 +325,13 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
 
                         // divv[id_a] = div_vi;
                         // curlv[id_a] = curl_vi;
+                        Tscal term1 = dvi_dxk[0].x() * dvi_dxk[0].x() + dvi_dxk[1].y() * dvi_dxk[1].y() + dvi_dxk[2].z() * dvi_dxk[2].z();
+                        Tscal term2 = dvi_dxk[0].y() + dvi_dxk[1].x();
+                        Tscal term3 = dvi_dxk[0].z() + dvi_dxk[2].x();
+                        Tscal term4 = dvi_dxk[2].y() + dvi_dxk[1].z();
                         divv[id_a]   = -inv_rho_omega_a * sum_nabla_v;
                         curlv[id_a]  = -inv_rho_omega_a * sum_nabla_cross_v;
+                        djvi2[id_a]  = 4*term1 + 2*(term2*term2 + term3*term3 + term4*term4);
                         dtdivv[id_a] = div_ai - tens_nablav;
                     });
             });
@@ -336,6 +344,7 @@ void shammodels::sph::modules::DiffOperatorDtDivv<Tvec, SPHKernel>::update_dtdiv
             buf_divv.complete_event_state(e);
             buf_curlv.complete_event_state(e);
             buf_dtdivv.complete_event_state(e);
+            buf_djvi2.complete_event_state(e);
             sham::EventList resulting_events;
             resulting_events.add_event(e);
             pcache.complete_event_state(resulting_events);

@@ -1566,10 +1566,16 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
     }
 
     if (solver.solver_config.has_field_divB()) {
-        std::vector<Tscal> vecdivB = pdat.fetch_data<Tscal>("divB");
-        u64 divBid                 = block.get_ref_f32("divB");
-        for (auto d_ : vecdivB) {
+        std::vector<Tscal> divB = pdat.fetch_data<Tscal>("divB");
+        u64 divBid              = block.get_ref_f32("divB");
+        for (auto d_ : divB) {
             block.blocks_f32[divBid].vals.push_back(d_);
+        }
+
+        std::vector<Tscal> mcurlB = pdat.fetch_data<Tscal>("mcurlB");
+        u64 mcurlBid              = block.get_ref_f32("mcurlB");
+        for (auto d_ : mcurlB) {
+            block.blocks_f32[mcurlBid].vals.push_back(d_);
         }
     }
 

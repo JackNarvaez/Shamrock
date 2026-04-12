@@ -81,7 +81,7 @@ struct shammodels::sph::MHDConfig {
     }
 
     inline bool has_curlB_field() {
-        bool is_curlB = bool(std::get_if<IdealMHD_constrained_hyper_para>(&config));
+        bool is_curlB = bool(std::get_if<NonIdealMHD>(&config));
         return is_curlB;
     }
 

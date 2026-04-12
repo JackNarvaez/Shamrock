@@ -79,6 +79,7 @@ namespace shammodels::sph {
         }
         if (has_field_divB()) {
             pdl.add_field<Tscal>("divB", 1);
+            pdl.add_field<Tscal>("mcurlB", 1);
         }
 
         if (has_field_curlB()) {
@@ -145,6 +146,7 @@ namespace shammodels::sph {
 
         if (has_field_divB()) {
             ghost_layout.add_field<Tscal>("divB", 1);
+            ghost_layout.add_field<Tscal>("mcurlB", 1);
         }
 
         if (has_field_curlB()) {
@@ -152,7 +154,6 @@ namespace shammodels::sph {
         }
 
         if (has_field_djvi2()) {
-            ghost_layout.add_field<Tscal>("djvi2", 1);
             ghost_layout.add_field<Tscal>("dudtAV", 1);
             ghost_layout.add_field<Tscal>("dudtAR", 1);
         }

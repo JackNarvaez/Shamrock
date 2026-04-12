@@ -155,9 +155,9 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
     }
     if (has_divB_field) {
         solver_graph.register_edge("divB", FieldRefs<Tscal>("divB", "\\nabla \\cdot B"));
+        solver_graph.register_edge("mcurlB", FieldRefs<Tscal>("mcurlB", "|\\nabla \\times B|"));
     }
     if (has_djvi2_field) {
-        solver_graph.register_edge("djvi2", FieldRefs<Tscal>("djvi2", "djv^2i"));
         solver_graph.register_edge("dudtAV", FieldRefs<Tscal>("dudtAV", "du/dt|_{AV}"));
         solver_graph.register_edge("dudtAR", FieldRefs<Tscal>("dudtAR", "du/dt|_{AR}"));
     }
@@ -299,6 +299,14 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
                     solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
                     solver_graph.get_edge_ptr<FieldRefs<Tscal>>("divB"));
             attach_field_sequence.push_back(attach_divB);
+
+            auto attach_mcurlB = solver_graph.register_node(
+                "attach_mcurlB", GetFieldRefFromLayer<Tscal>(pdl, "mcurlB"));
+            shambase::get_check_ref(attach_mcurlB)
+                .set_edges(
+                    solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
+                    solver_graph.get_edge_ptr<FieldRefs<Tscal>>("mcurlB"));
+            attach_field_sequence.push_back(attach_mcurlB);
         }
 
         if (has_curlB_field) {
@@ -312,14 +320,6 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
         }
 
         if (has_djvi2_field) {
-            auto attach_djvi2 = solver_graph.register_node(
-                "attach_djvi2", GetFieldRefFromLayer<Tscal>(pdl, "djvi2"));
-            shambase::get_check_ref(attach_djvi2)
-                .set_edges(
-                    solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
-                    solver_graph.get_edge_ptr<FieldRefs<Tscal>>("djvi2"));
-            attach_field_sequence.push_back(attach_djvi2);
-
             auto attach_dudtAV = solver_graph.register_node(
                 "attach_dudtAV", GetFieldRefFromLayer<Tscal>(pdl, "dudtAV"));
             shambase::get_check_ref(attach_dudtAV)
@@ -1330,7 +1330,7 @@ void shammodels::sph::Solver<Tvec, Kern>::communicate_merge_ghosts_fields() {
     bool has_B_field       = solver_config.has_field_B_on_rho();
     bool has_psi_field     = solver_config.has_field_psi_on_ch();
     bool has_curlB_field   = solver_config.has_field_curlB();
-    bool has_divB_field   = solver_config.has_field_divB();
+    bool has_divB_field    = solver_config.has_field_divB();
     bool has_djvi2_field   = solver_config.has_field_djvi2();
     bool has_epsilon_field = solver_config.dust_config.has_epsilon_field();
     bool has_deltav_field  = solver_config.dust_config.has_deltav_field();
@@ -1352,7 +1352,7 @@ void shammodels::sph::Solver<Tvec, Kern>::communicate_merge_ghosts_fields() {
     const u32 idpsi_on_ch = (has_psi_field) ? pdl.get_field_idx<Tscal>("dpsi/ch") : 0;
     const u32 icurlB      = (has_curlB_field) ? pdl.get_field_idx<Tvec>("curlB") : 0;
     const u32 idivB       = (has_divB_field) ? pdl.get_field_idx<Tscal>("divB") : 0;
-    const u32 idjvi2      = (has_djvi2_field) ? pdl.get_field_idx<Tscal>("djvi2") : 0;
+    const u32 imcurlB     = (has_divB_field) ? pdl.get_field_idx<Tscal>("mcurlB") : 0;
     const u32 idudtAV     = (has_djvi2_field) ? pdl.get_field_idx<Tscal>("dudtAV") : 0;
     const u32 idudtAR     = (has_djvi2_field) ? pdl.get_field_idx<Tscal>("dudtAR") : 0;
 
@@ -1386,7 +1386,7 @@ void shammodels::sph::Solver<Tvec, Kern>::communicate_merge_ghosts_fields() {
     const u32 ipsi_interf   = (has_psi_field) ? ghost_layout.get_field_idx<Tscal>("psi/ch") : 0;
     const u32 icurlB_interf = (has_curlB_field) ? ghost_layout.get_field_idx<Tvec>("curlB") : 0;
     const u32 idivB_interf  = (has_divB_field) ? ghost_layout.get_field_idx<Tscal>("divB") : 0;
-    const u32 idjvi2_interf  = (has_djvi2_field) ? ghost_layout.get_field_idx<Tscal>("djvi2") : 0;
+    const u32 imcurlB_interf = (has_divB_field) ? ghost_layout.get_field_idx<Tscal>("mcurlB") : 0;
     const u32 idudtAV_interf = (has_djvi2_field) ? ghost_layout.get_field_idx<Tscal>("dudtAV") : 0;
     const u32 idudtAR_interf = (has_djvi2_field) ? ghost_layout.get_field_idx<Tscal>("dudtAR") : 0;
 
@@ -1459,11 +1459,11 @@ void shammodels::sph::Solver<Tvec, Kern>::communicate_merge_ghosts_fields() {
             if (has_divB_field) {
                 sender_patch.get_field<Tscal>(idivB).append_subset_to(
                     buf_idx, cnt, pdat.get_field<Tscal>(idivB_interf));
+                sender_patch.get_field<Tscal>(imcurlB).append_subset_to(
+                    buf_idx, cnt, pdat.get_field<Tscal>(imcurlB_interf));
             }
 
             if (has_djvi2_field) {
-                sender_patch.get_field<Tscal>(idjvi2).append_subset_to(
-                    buf_idx, cnt, pdat.get_field<Tscal>(idjvi2_interf));
                 sender_patch.get_field<Tscal>(idudtAV).append_subset_to(
                     buf_idx, cnt, pdat.get_field<Tscal>(idudtAV_interf));
                 sender_patch.get_field<Tscal>(idudtAR).append_subset_to(
@@ -1548,10 +1548,10 @@ void shammodels::sph::Solver<Tvec, Kern>::communicate_merge_ghosts_fields() {
 
                 if (has_divB_field) {
                     pdat_new.get_field<Tscal>(idivB_interf).insert(pdat.get_field<Tscal>(idivB));
+                    pdat_new.get_field<Tscal>(imcurlB_interf).insert(pdat.get_field<Tscal>(imcurlB));
                 }
 
                 if (has_djvi2_field) {
-                    pdat_new.get_field<Tscal>(idjvi2_interf).insert(pdat.get_field<Tscal>(idjvi2));
                     pdat_new.get_field<Tscal>(idudtAV_interf)
                         .insert(pdat.get_field<Tscal>(idudtAV));
                     pdat_new.get_field<Tscal>(idudtAR_interf)
@@ -2050,11 +2050,6 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                 sph::modules::DiffOperators<Tvec, Kern>(context, solver_config, storage)
                     .update_curlv();
             }
-        }
-
-        if (solver_config.has_field_djvi2()) {
-            sph::modules::DiffOperators<Tvec, Kern>(context, solver_config, storage)
-                .update_djvi2();
         }
 
         // if (solver_config.has_field_curlB()) {

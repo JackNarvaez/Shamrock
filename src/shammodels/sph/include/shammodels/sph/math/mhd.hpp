@@ -369,7 +369,7 @@ namespace shamrock::sph::mhd {
             Fab_a * omega_a_rho_a_inv,
             Fab_b / (rho_b * omega_b));
 
-        du_art_res += lambda_artes(
+        du_art_res = lambda_artes(
             pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b);
 
         du_dt += du_art_res;

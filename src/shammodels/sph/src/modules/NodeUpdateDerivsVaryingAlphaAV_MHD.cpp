@@ -56,7 +56,7 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
         Tscal *__restrict dpsi_on_ch,
         Tscal *__restrict drho_dt,
         Tscal *__restrict divB,
-        Tvec *__restrict curlB,
+        Tscal *__restrict mcurlB,
         Tscal *__restrict dudtAV,
         Tscal *__restrict dudtAR) const {
 
@@ -209,7 +209,7 @@ struct KernelUpdateDerivsVaryingAlphaAV_MHD {
         dpsi_on_ch[id_a] = psi_eq - sigma_mhd * psi_a / h_a;
         drho_dt[id_a]    = drho_eq;
         divB[id_a]       = divB_a;
-        curlB[id_a]      = curlB_a;
+        mcurlB[id_a]     = sycl::sqrt(sycl::dot(curlB_a, curlB_a));
         dudtAV[id_a]     = dudtAV_a;
         dudtAR[id_a]     = dudtAR_a;
     }
@@ -245,7 +245,7 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKerne
     edges.dpsi_on_ch.ensure_sizes(part_counts);
     edges.drho_dt.ensure_sizes(part_counts);
     edges.divB.ensure_sizes(part_counts);
-    edges.curlB.ensure_sizes(part_counts);
+    edges.mcurlB.ensure_sizes(part_counts);
     edges.dudtAV.ensure_sizes(part_counts);
     edges.dudtAR.ensure_sizes(part_counts);
 
@@ -278,7 +278,7 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKerne
             edges.dpsi_on_ch.get_spans(),
             edges.drho_dt.get_spans(),
             edges.divB.get_spans(),
-            edges.curlB.get_spans(),
+            edges.mcurlB.get_spans(),
             edges.dudtAV.get_spans(),
             edges.dudtAR.get_spans()},
         part_counts,
