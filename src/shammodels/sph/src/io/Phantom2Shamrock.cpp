@@ -145,12 +145,9 @@ namespace shammodels::sph {
 
     template<class Tvec>
     MHDConfig<Tvec> get_shamrock_mhdconfig(PhantomDump &phdump) {
-        using Tscal = shambase::VecComponent<Tvec>;
-        using IMHD = typename MHDConfig<Tvec>::IdealMHD_constrained_hyper_para;
-
         MHDConfig<Tvec> cfg{};
         
-        cfg.set(IMHD{1, 2, 1, 1});
+        cfg.set_ideal_mhd_constrained_hyper_para(1, 2, 1, 1);
 
         return cfg;
     }

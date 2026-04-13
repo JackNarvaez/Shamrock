@@ -58,6 +58,11 @@ struct shammodels::sph::MHDConfig {
 
     void set(Variant v) { config = v; }
 
+    void set_ideal_mhd_constrained_hyper_para(
+        Tscal alpha_u, Tscal beta_AV, Tscal sigma_mhd, Tscal mu_0) {
+        set(IdealMHD_constrained_hyper_para{alpha_u, beta_AV, sigma_mhd, mu_0});
+    }
+
     inline bool has_B_field() {
         bool is_B = bool(std::get_if<IdealMHD_constrained_hyper_para>(&config))
                     || bool(std::get_if<NonIdealMHD>(&config));
