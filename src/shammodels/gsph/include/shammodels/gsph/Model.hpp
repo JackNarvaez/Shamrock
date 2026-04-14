@@ -343,6 +343,9 @@ namespace shammodels::gsph {
 
         inline f64 solver_logs_last_rate() { return solver.solve_logs.get_last_rate(); }
         inline u64 solver_logs_last_obj_count() { return solver.solve_logs.get_last_obj_count(); }
+        inline shamsys::SystemMetrics solver_logs_last_system_metrics() {
+            return solver.solve_logs.get_last_system_metrics();
+        }
 
         ////////////////////////////////////////////////////////////////////////////////////////////
         // I/O (uses shared ShamrockDump mechanism like SPH)

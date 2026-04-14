@@ -161,6 +161,8 @@ jobs:
             artifact_name: gallery_sph_run_advect_sphere_domain_decomp
           - testfile: "examples/sph/run_sphsetup_logs.py"
             artifact_name: gallery_sph_run_sphsetup_logs
+          - testfile: "examples/sph/run_orzag_tang.py"
+            artifact_name: gallery_sph_run_orzag_tang
 
           # Tests CI
           - testfile: "examples/tests_ci/run_compare_shamrock_ph_disc.py"

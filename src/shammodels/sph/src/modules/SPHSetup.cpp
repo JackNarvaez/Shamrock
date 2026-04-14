@@ -119,7 +119,7 @@ void shammodels::sph::modules::SPHSetup<Tvec, SPHKernel>::apply_setup(
     auto has_pdat = [&]() {
         bool ret = false;
         using namespace shamrock::patch;
-        sched.for_each_local_patchdata([&](const Patch p, PatchDataLayer &pdat) {
+        sched.for_each_local_patchdata([&](const Patch &p, PatchDataLayer &pdat) {
             ret = true;
         });
         return ret;
@@ -307,7 +307,7 @@ void shammodels::sph::modules::SPHSetup<Tvec, SPHKernel>::apply_setup_new(
     auto has_pdat = [&]() {
         bool ret = false;
         using namespace shamrock::patch;
-        sched.for_each_local_patchdata([&](const Patch p, PatchDataLayer &pdat) {
+        sched.for_each_local_patchdata([&](const Patch &p, PatchDataLayer &pdat) {
             ret = true;
         });
         return ret;
@@ -455,7 +455,7 @@ void shammodels::sph::modules::SPHSetup<Tvec, SPHKernel>::apply_setup_new(
 
                 // inject in local domains first
                 PatchCoordTransform<Tvec> ptransf = sched.get_sim_box().get_patch_transform<Tvec>();
-                sched.for_each_local_patchdata([&](const Patch p, PatchDataLayer &pdat) {
+                sched.for_each_local_patchdata([&](const Patch &p, PatchDataLayer &pdat) {
                     shammath::CoordRange<Tvec> patch_coord = ptransf.to_obj_coord(p);
 
                     PatchDataField<Tvec> &xyz = to_insert.get_field<Tvec>(0);
@@ -823,9 +823,9 @@ void shammodels::sph::modules::SPHSetup<Tvec, SPHKernel>::apply_setup_new(
 
             static constexpr u32 cols_count = 6;
 
-            using Table = shambase::table<cols_count>;
+            using Table = shambase::table;
 
-            Table table;
+            Table table(6);
 
             table.add_double_rule();
             table.add_data(
