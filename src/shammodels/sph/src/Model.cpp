@@ -1447,9 +1447,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
             .update_load_balancing();
 
         post_insert_data<Tvec>(sched);
-     }
-        // add sinks
+    }
+    // add sinks
 
+    if (phdump.blocks.size() > 1) {
         PhantomDumpBlock &sink_block = phdump.blocks[1];
         {
             std::vector<Tscal> xsink, ysink, zsink;
@@ -1474,6 +1475,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
                     Racc[i]);
             }
         }
+    }
 }
 
 template<class Tvec, template<class> class SPHKernel>
