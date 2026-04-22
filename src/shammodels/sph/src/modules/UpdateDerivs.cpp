@@ -523,11 +523,6 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
 
     shamlog_debug_ln("UpdateDerivs", "Updating derivs: MHD + CD AV");
 
-    shamlog_debug_ln("alpha_u = {}", cfg.alpha_u);
-    shamlog_debug_ln("beta_AV = {}", cfg.beta_AV);
-    shamlog_debug_ln("sigma_mhd = {}", cfg.sigma_mhd);
-    shamlog_debug_ln("mu_0 = {}", cfg.mu_0);
-
     using namespace shamrock;
     using namespace shamrock::patch;
 
@@ -689,7 +684,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
     std::shared_ptr<shamrock::solvergraph::ScalarEdge<Tscal>> mu_0
         = std::make_shared<shamrock::solvergraph::ScalarEdge<Tscal>>("mu_0", "mu_0");
     {
-        shambase::get_check_ref(mu_0).value = cfg.mu_0;
+        shambase::get_check_ref(mu_0).value = solver_config.get_constant_mu_0();
     }
 
     std::shared_ptr<NodeUpdateDerivsVaryingAlphaAV_MHD<Tvec, SPHKernel>> node

@@ -147,7 +147,7 @@ namespace shammodels::sph {
     MHDConfig<Tvec> get_shamrock_mhdconfig(PhantomDump &phdump) {
         MHDConfig<Tvec> cfg{};
         
-        cfg.set_ideal_mhd_constrained_hyper_para(1, 2, 1, 1);
+        cfg.set_ideal_mhd_constrained_hyper_para(1, 2, 1);
 
         return cfg;
     }
