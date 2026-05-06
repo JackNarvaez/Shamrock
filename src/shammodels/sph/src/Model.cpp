@@ -1291,6 +1291,20 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
             // expand the box
             d *= box_tolerance;
 
+	    // Log the original calculated box dimensions for reference
+	    if (shamcomm::world_rank() == 0) {
+	    	logger::info_ln("Model",
+			"Calculated box (from particles): center = ", center,
+			", half-size = ", d);
+	    }
+
+	    // Override with fixed box dimensions for this specific setup
+	    // TODO: Make this configurable instead of hardcoded
+	    // Note: Particles outside r=20 are killed, so box extends to ±25
+
+	    center = {0.0, 0.0, 0.0};
+	    d = {25.0, 25.0, 25.0};
+
             resize_simulation_box({center - d, center + d});
         }
 
