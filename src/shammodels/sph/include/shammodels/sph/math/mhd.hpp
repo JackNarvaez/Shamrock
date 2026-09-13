@@ -139,14 +139,15 @@ namespace shamrock::sph::mhd {
         Tvec B_a,
         Tvec B_b,
         Tscal Fab_a,
-        Tscal Fab_b) {
+        Tscal Fab_b,
+        Tscal mu_0) {
 
         Tscal B_ab_sq = sycl::dot(B_a - B_b, B_a - B_b);
 
         Tscal acc_a = Fab_a * isub_fact_a;
         Tscal acc_b = Fab_b * isub_fact_b;
 
-        Tscal artres = -0.25 * m_b * vsigb * (acc_a + acc_b) * B_ab_sq;
+        Tscal artres = -0.25 * m_b * vsigb * (acc_a + acc_b) * B_ab_sq / mu_0;
         return artres;
     }
 
@@ -184,14 +185,14 @@ namespace shamrock::sph::mhd {
     template<class Tvec, class Tscal, MHDType MHD_mode = Ideal>
     inline Tscal dpsi_on_ch_parabolic_propag(
         Tscal m_b,
-        Tscal rho_a,
+        Tscal rho_b,
         Tvec B_a,
         Tvec B_b,
         Tscal omega_a,
         Tvec nabla_Wab_ha,
         Tscal ch_a) {
 
-        Tscal sub_fact_a = rho_a * omega_a;
+        Tscal sub_fact_a = rho_b * omega_a;
         Tvec B_ab        = (B_a - B_b);
         Tscal parabolic_propag = m_b * (ch_a * sham::inv_sat_zero(sub_fact_a))
                                  * sycl::dot(B_ab, nabla_Wab_ha); //-ch_a * divB_a;
@@ -370,7 +371,7 @@ namespace shamrock::sph::mhd {
             Fab_b / (rho_b * omega_b));
 
         du_art_res = lambda_artes(
-            pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b);
+            pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b, mu_0);
 
         du_dt += du_art_res;
         // end du/dt terms
@@ -404,7 +405,7 @@ namespace shamrock::sph::mhd {
         // d(psi/ch)/dt terms
         sum_psi_propag = dpsi_on_ch_parabolic_propag(
             pmass,
-            rho_a,
+            rho_b,
             B_a,
             B_b,
             omega_a,
@@ -596,7 +597,7 @@ namespace shamrock::sph::mhd {
             dWab_b / (rho_b * omega_b));
 
         du_dt += lambda_artes(
-            pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b);
+            pmass, isub_fact_a, isub_fact_b, vsig_B, B_a, B_b, Fab_a, Fab_b, mu_0);
 
         // end du/dt terms
 
