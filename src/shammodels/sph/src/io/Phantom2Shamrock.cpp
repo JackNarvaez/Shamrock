@@ -146,8 +146,27 @@ namespace shammodels::sph {
     template<class Tvec>
     MHDConfig<Tvec> get_shamrock_mhdconfig(PhantomDump &phdump) {
         MHDConfig<Tvec> cfg{};
-        
-        cfg.set_ideal_mhd_constrained_hyper_para(1, 2, 1);
+
+        // Phantom only writes B/rho fields for MHD runs (in any block), otherwise keep hydro
+        const std::string tag_Bx = shambase::format("{:16s}", "B/rhox");
+        auto has_tag = [&](auto &arrays) {
+            for (auto &arr : arrays) {
+                if (arr.tag == tag_Bx) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        bool has_B_field = false;
+        for (auto &block : phdump.blocks) {
+            has_B_field = has_B_field || has_tag(block.blocks_fort_real)
+                          || has_tag(block.blocks_f32) || has_tag(block.blocks_f64);
+        }
+
+        if (has_B_field) {
+            cfg.set_ideal_mhd_constrained_hyper_para(1, 2, 1);
+        }
 
         return cfg;
     }
