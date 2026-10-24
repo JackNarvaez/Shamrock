@@ -20,11 +20,11 @@
 #include "shammodels/common/amr/AMRBlock.hpp"
 #include "shammodels/ramses/solvegraph/NeighGraphLinkFieldEdge.hpp"
 #include "shamrock/solvergraph/Field.hpp"
-#include "shamrock/solvergraph/INode.hpp"
 #include "shamrock/solvergraph/Indexes.hpp"
 #include "shamrock/solvergraph/ScalarsEdge.hpp"
+#include "shamsolvergraph/node/INode.hpp"
 
-#define NODE_SUM_FLUX_HYDRO(X_RO, X_RW)                                                            \
+#define NODE_EDGES(X_RO, X_RW)                                                                     \
     /* ------------------- inputs ------------------- */                                           \
     /* number of blocks     */                                                                     \
     X_RO(shamrock::solvergraph::Indexes<u32>, block_counts)                                        \
@@ -81,7 +81,7 @@ namespace shammodels::basegodunov::modules {
 
         using CellGraphEdge = solvergraph::OrientedAMRGraphEdge<Tvec, TgridVec>;
 
-        EXPAND_NODE_EDGES(NODE_SUM_FLUX_HYDRO)
+        EXPAND_NODE_EDGES(NODE_EDGES)
 
         void _impl_evaluate_internal();
 
@@ -92,4 +92,4 @@ namespace shammodels::basegodunov::modules {
 
 } // namespace shammodels::basegodunov::modules
 
-#undef NODE_SUM_FLUX_HYDRO
+#undef NODE_EDGES

@@ -15,13 +15,16 @@
 #include "shamtree/MortonCodeSet.hpp"
 #include "shamtree/MortonCodeSortedSet.hpp"
 #include "shamtree/MortonReducedSet.hpp"
+#include "tests/shamtree/tie_order_utils.hpp"
 #include <vector>
+
+using shamtree::test_utils::sort_ties;
 
 using Tval    = double;
 using Tmorton = u64;
 using Tvec    = f64_3;
 
-TestStart(Unittest, "shamtree/KarrasRadixTreeField", test_karras_radix_tree_field_max_field, 1) {
+NEW_TEST(Unittest, "shamtree/KarrasRadixTreeField", 1) {
     // Use the same 11-particle partpos as in KarrasRadixTreeAABBTests.cpp
     std::vector<Tval> field_values{1.0, 5.0, 3.0, 2.0, 8.0, 7.0, 4.0, 6.0, 9.0, 10.0, 11.0};
     std::vector<Tvec> partpos{
@@ -150,8 +153,10 @@ TestStart(Unittest, "shamtree/KarrasRadixTreeField", test_karras_radix_tree_fiel
         test_mortons_sorted);
     REQUIRE_EQUAL(bvh.reduced_morton_set.morton_codes_set.map_morton_id_to_obj_id.get_size(), 16);
     REQUIRE_EQUAL(
-        bvh.reduced_morton_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(),
-        index_map_obj_idx);
+        sort_ties(
+            bvh.reduced_morton_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(),
+            test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 
     REQUIRE_EQUAL(bvh.reduced_morton_set.reduce_code_count, 6);
     REQUIRE_EQUAL(bvh.reduced_morton_set.reduced_morton_codes.get_size(), 6);

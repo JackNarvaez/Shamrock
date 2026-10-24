@@ -130,7 +130,8 @@ namespace sham::details {
 
     std::string log_mem_perf_info(const std::shared_ptr<DeviceScheduler> &dev_sched) {
 
-        std::string fmt = R"log(
+        return sham::format(
+            R"log(
     World infos :
         World size = {}
         World rank = {}
@@ -143,10 +144,7 @@ namespace sham::details {
         allocated_byte_host = {}
         allocated_byte_device = {}
         allocated_byte_shared = {}
-        )log";
-
-        return shambase::format(
-            fmt,
+        )log",
             shamcomm::world_size(),
             shamcomm::world_rank(),
             dev_sched->ctx->device->dev.get_info<sycl::info::device::name>(),
@@ -211,7 +209,7 @@ namespace sham::details {
             try {
                 usm_ptr = alloc_lambda();
             } catch (std::exception &ex) {
-                std::string log = shambase::format(
+                std::string log = sham::format(
                     "Alloc failed with exception : {}\nShamrock mem infos : {}",
                     ex.what(),
                     log_mem_perf_info(dev_sched));
@@ -222,7 +220,7 @@ namespace sham::details {
         // check max alloc sizes
         if constexpr (target == device) {
             if (sz > ds.get_queue().get_device_prop().max_mem_alloc_size_dev) {
-                std::string err_log = shambase::format(
+                std::string err_log = sham::format(
                     "You are trying to allocate more than the maximum allocation size allowed by "
                     "the "
                     "device\n"
@@ -235,7 +233,7 @@ namespace sham::details {
             size_t max_alloc_size_dev  = ds.get_queue().get_device_prop().max_mem_alloc_size_dev;
             size_t max_alloc_size_host = ds.get_queue().get_device_prop().max_mem_alloc_size_host;
             if (sz > sycl::min(max_alloc_size_dev, max_alloc_size_host)) {
-                std::string err_log = shambase::format(
+                std::string err_log = sham::format(
                     "You are trying to allocate more than the maximum allocation size allowed by "
                     "the "
                     "device\n"
@@ -246,7 +244,7 @@ namespace sham::details {
             }
         } else if constexpr (target == host) {
             if (sz > ds.get_queue().get_device_prop().max_mem_alloc_size_host) {
-                std::string err_log = shambase::format(
+                std::string err_log = sham::format(
                     "You are trying to allocate more than the maximum allocation size allowed by "
                     "the "
                     "host\n"
@@ -262,7 +260,7 @@ namespace sham::details {
         if (alignment) {
 
             if (*alignment % ds.get_queue().get_device_prop().mem_base_addr_align != 0) {
-                shambase::throw_with_loc<std::runtime_error>(shambase::format(
+                shambase::throw_with_loc<std::runtime_error>(sham::format(
                     "The alignment of the USM pointer is not aligned with minimum device "
                     "alignment\n"
                     "  alignment = {} | device alignment = {} | alignment % device alignment = {}",
@@ -272,7 +270,7 @@ namespace sham::details {
             }
 
             if (sz % *alignment != 0) {
-                shambase::throw_with_loc<std::runtime_error>(shambase::format(
+                shambase::throw_with_loc<std::runtime_error>(sham::format(
                     "The size of the USM pointer is not aligned with the given alignment\n"
                     "  size = {} | alignment = {} | size % alignment = {}",
                     sz,
@@ -318,7 +316,7 @@ namespace sham::details {
         if (usm_ptr == nullptr) {
             std::string err_msg = "";
             if (alignment) {
-                err_msg = shambase::format(
+                err_msg = sham::format(
                     "USM allocation failed, details : sz={}, target={}, alignment={}, alloc "
                     "result = {}",
                     sz,
@@ -326,7 +324,7 @@ namespace sham::details {
                     *alignment,
                     usm_ptr);
             } else {
-                err_msg = shambase::format(
+                err_msg = sham::format(
                     "USM allocation failed, details : sz={}, target={}, alloc result = {}",
                     sz,
                     get_mode_name<target>(),

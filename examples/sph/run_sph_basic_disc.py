@@ -16,6 +16,11 @@ if not shamrock.sys.is_initialized():
     shamrock.sys.init("0:0")
 
 # %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+
+# %%
 # Setup units
 
 si = shamrock.UnitSystem()
@@ -160,8 +165,8 @@ gen_disc = setup.make_generator_disc_mc(
     random_seed=666,
 )
 
-# Print the dot graph of the setup
-print(gen_disc.get_dot())
+# Show the dot graph of the setup
+shamrock.utils.plot.DotGraph(gen_disc.get_dot())
 
 # %%
 # Apply the setup
@@ -170,7 +175,7 @@ setup.apply_setup(gen_disc)
 # %%
 # Run a single step to init the integrator and smoothing length of the particles
 # Here the htolerance is the maximum factor of evolution of the smoothing length in each
-# Smoothing length iterations, increasing it affect the performance negatively but increse the
+# Smoothing length iterations, increasing it affect the performance negatively but increase the
 # convergence rate of the smoothing length
 # this is why we increase it temporely to 1.3 before lowering it back to 1.1 (default value)
 # Note that both ``change_htolerance`` can be removed and it will work the same but would converge
@@ -270,7 +275,7 @@ cbar = plt.colorbar(res, extend="both")
 cbar.set_label(r"$\int \rho \, \mathrm{d} z$ [code unit]")
 # or r"$\rho$ [code unit]" for slices
 
-plt.title("t = {:0.3f} [code unit]".format(model.get_time()))
+plt.title(f"t = {model.get_time():0.3f} [code unit]")
 plt.xlabel("x")
 plt.ylabel("z")
 plt.show()

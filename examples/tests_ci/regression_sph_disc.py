@@ -141,7 +141,7 @@ for s in sink_list:
     vx, vy, vz = s["vel"]
     racc = s["racc"]
 
-    print("add sink : mass {} pos {} vel {} racc {}".format(mass, (x, y, z), (vx, vy, vz), racc))
+    print(f"add sink : mass {mass} pos {(x, y, z)} vel {(vx, vy, vz)} racc {racc}")
 
     model.add_sink(mass, (x, y, z), (vx, vy, vz), racc)
 
@@ -225,12 +225,15 @@ def check_regression(data_dict1, data_dict2, tolerances):
         )
 
     # Compare if values are equal
+    errors = []
+
     for dset_name in data_dict1:
         # Compare same size
         if data_dict1[dset_name].shape != data_dict2[dset_name].shape:
             print(f"Data {dset_name} has different shape")
             print(f"shape: {data_dict1[dset_name].shape} != {data_dict2[dset_name].shape}")
-            raise ValueError(f"Data {dset_name} has different shape")
+            errors.append(ValueError(f"Data {dset_name} has different shape"))
+            continue
 
         # Compare values
         delta = np.isclose(
@@ -262,7 +265,13 @@ def check_regression(data_dict1, data_dict2, tolerances):
             print(
                 f"Data {dset_name} has {offenses} offenses, absolute diff: {np.abs(data_dict1[dset_name] - data_dict2[dset_name]).max()}"
             )
-            raise ValueError(f"Data {dset_name} is not equal")
+            errors.append(ValueError(f"Data {dset_name} is not equal"))
+
+    if errors:
+        if len(errors) == 1:
+            raise errors[0]
+        msg = "Regression check failed:\n" + "\n".join(f"  - {err}" for err in errors)
+        raise ValueError(msg)
 
     print(" -> Regression test passed successfully")
 
@@ -294,7 +303,7 @@ while t_sum < t_target:
 # %%
 # Check regression
 
-reference_folder = "reference-files/regression_sph_disc_23_01_26"
+reference_folder = "reference-files/regression_sph_disc_01_10_26"
 
 tolerances = [
     {

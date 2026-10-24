@@ -252,10 +252,10 @@ namespace shamrock::scheduler::details {
         var /= world_size;
 
         return {
-            min * strategy_weight,
-            max * strategy_weight,
-            avg * strategy_weight,
-            sycl::sqrt(var) * strategy_weight};
+            .min    = min * strategy_weight,
+            .max    = max * strategy_weight,
+            .mean   = avg * strategy_weight,
+            .stddev = sycl::sqrt(var) * strategy_weight};
     }
 
 } // namespace shamrock::scheduler::details
@@ -297,7 +297,7 @@ namespace shamrock::scheduler {
         if (shamcomm::world_rank() == 0) {
             logger::info_ln(
                 "LoadBalance",
-                shambase::format(
+                sham::format(
                     R"=(Summary (strategy = {0:}):
  - strategy "psweep"      : max = {1:.1f} min = {2:.1f} factor = {3:}
  - strategy "round robin" : max = {4:.1f} min = {5:.1f} factor = {6:})=",

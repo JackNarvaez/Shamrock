@@ -25,8 +25,8 @@
 #include "shambase/time.hpp"
 #include "shamalgs/collective/distributedDataComm.hpp"
 #include "shamrock/legacy/patch/utility/patch_field.hpp"
-#include "shamrock/solvergraph/NodeSetEdge.hpp"
 #include "shamrock/solvergraph/PatchDataLayerRefs.hpp"
+#include "shamsolvergraph/node/NodeSetEdge.hpp"
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 #include <fstream>
@@ -47,6 +47,7 @@
 #include "shamrock/scheduler/HilbertLoadBalance.hpp"
 #include "shamrock/scheduler/PatchTree.hpp"
 #include "shamrock/scheduler/SchedulerPatchData.hpp"
+#include "shamsolvergraph/SolverGraphSerializable.hpp"
 #include "shamsys/legacy/sycl_handler.hpp"
 
 struct PatchSchedulerConfig {
@@ -92,15 +93,17 @@ class PatchScheduler {
 
     using PatchTree          = shamrock::scheduler::PatchTree;
     using SchedulerPatchData = shamrock::scheduler::SchedulerPatchData;
+    using SynchronizedData   = shamrock::solvergraph::SolverGraphSerializable;
 
     std::shared_ptr<shamrock::patch::PatchDataLayerLayout> pdl_ptr;
 
     u64 crit_patch_split; ///< splitting limit (if load value > crit_patch_split => patch split)
     u64 crit_patch_merge; ///< merging limit (if load value < crit_patch_merge => patch merge)
 
-    SchedulerPatchList patch_list; ///< handle the list of the patches of the scheduler
-    SchedulerPatchData patch_data; ///< handle the data of the patches of the scheduler
-    PatchTree patch_tree;          ///< handle the tree structure of the patches
+    SchedulerPatchList patch_list;      ///< handle the list of the patches of the scheduler
+    SchedulerPatchData patch_data;      ///< handle the data of the patches of the scheduler
+    PatchTree patch_tree;               ///< handle the tree structure of the patches
+    SynchronizedData synchronized_data; ///< data that is synchroneous across all ranks
 
     // using unordered set is not an issue since we use the find command after
     std::unordered_set<u64> owned_patch_id; ///< list of owned patch ids updated with
@@ -198,7 +201,7 @@ class PatchScheduler {
 
     std::string format_patch_coord(shamrock::patch::Patch p);
 
-    void check_patchdata_locality_corectness();
+    void check_patchdata_locality_correctness();
 
     [[deprecated]]
     void dump_local_patches(std::string filename);
@@ -242,7 +245,7 @@ class PatchScheduler {
 
     /**
      * @brief for each macro for patchadata
-     * exemple usage
+     * example usage
      * @code{.cpp}
      * sched.for_each_patch_data(
      *     [&](u64 id_patch, Patch cur_p, PatchData &pdat) {
@@ -265,6 +268,21 @@ class PatchScheduler {
                 fct(patch_id, cur_p, pdat);
             }
         });
+    }
+
+    /// Same as for_each_patch_data but iterates in increasing patch id order
+    template<class Function>
+    inline void for_each_patch_data_ordered(Function &&fct) {
+
+        patch_data.for_each_patchdata_ordered(
+            [&](u64 patch_id, shamrock::patch::PatchDataLayer &pdat) {
+                shamrock::patch::Patch &cur_p
+                    = patch_list.global[patch_list.id_patch_to_global_idx[patch_id]];
+
+                if (!cur_p.is_err_mode()) {
+                    fct(patch_id, cur_p, pdat);
+                }
+            });
     }
 
     template<class Function>
@@ -337,6 +355,20 @@ class PatchScheduler {
                 fct(cur_p, pdat);
             }
         });
+    }
+
+    /// Same as for_each_patchdata_nonempty but iterates in increasing patch id order
+    inline void for_each_patchdata_nonempty_ordered(
+        std::function<void(const shamrock::patch::Patch, shamrock::patch::PatchDataLayer &)> fct) {
+        patch_data.for_each_patchdata_ordered(
+            [&](u64 patch_id, shamrock::patch::PatchDataLayer &pdat) {
+                shamrock::patch::Patch &cur_p
+                    = patch_list.global[patch_list.id_patch_to_global_idx.at(patch_id)];
+
+                if ((!cur_p.is_err_mode()) && (!pdat.is_empty())) {
+                    fct(cur_p, pdat);
+                }
+            });
     }
 
     template<class T>
@@ -447,7 +479,7 @@ class PatchScheduler {
             using namespace shamrock::patch;
 
             u64 ptr = 0; // TODO accumulate_field() in scheduler ?
-            for_each_patch_data([&](u64 id_patch, Patch cur_p, PatchDataLayer &pdat) {
+            for_each_patch_data_ordered([&](u64 id_patch, Patch cur_p, PatchDataLayer &pdat) {
                 using namespace shamalgs::memory;
                 using namespace shambase;
 

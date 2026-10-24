@@ -27,7 +27,7 @@
 
 /**
  * @brief A class to dump a simulation state into ASCII files
- * @todo add exemple of usage
+ * @todo add example of usage
  */
 class AsciiSplitDump {
 
@@ -45,7 +45,7 @@ class AsciiSplitDump {
          */
         void open(u64 id_patch, std::string fileprefix) {
             const std::filesystem::path path{
-                fileprefix + "patch_" + shambase::format("{:04d}", id_patch) + ".txt"};
+                fileprefix + "patch_" + sham::format("{:04d}", id_patch) + ".txt"};
             if (std::filesystem::exists(path)) {
                 std::filesystem::remove(path);
             }
@@ -79,15 +79,6 @@ class AsciiSplitDump {
          */
         template<class T>
         void write_table(std::vector<T> buf, u32 len);
-
-        /**
-         * @brief Write a table to the file
-         *
-         * @param buf the table to write
-         * @param len the length of the table
-         */
-        template<class T>
-        void write_table(sycl::buffer<T> buf, u32 len);
 
         /**
          * @brief Close the file

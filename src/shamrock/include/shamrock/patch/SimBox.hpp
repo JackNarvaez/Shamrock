@@ -16,6 +16,7 @@
  */
 
 #include "shambase/exception.hpp"
+#include "nlohmann/json_fwd.hpp"
 #include "shamalgs/collective/reduction.hpp"
 #include "shambackends/sycl_utils.hpp"
 #include "shammath/CoordRange.hpp"
@@ -107,7 +108,7 @@ namespace shamrock::patch {
          * function.
          *
          * @tparam T type of position vector
-         * @param new_box the new bounding box to be all_reduced accros ranks
+         * @param new_box the new bounding box to be all_reduced across ranks
          */
         template<class T>
         inline void allreduce_set_bounding_box(shammath::CoordRange<T> new_box) {

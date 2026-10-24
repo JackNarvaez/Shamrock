@@ -47,7 +47,7 @@ void unit_test_key_pair() {
 
     for (u32 i = 0; i < size_test; i++) {
         REQUIRE_EQUAL_NAMED(
-            "index [" + shambase::format_printf("%d", i) + "]", unsorted[i], morton_list[i]);
+            "index [" + sham::format_printf("%d", i) + "]", unsorted[i], morton_list[i]);
     }
 }
 
@@ -80,13 +80,13 @@ f64 benchmark_key_pair_sort(const u32 &nobj) {
 
         shamsys::instance::get_compute_queue().wait();
 
-        t.end();
+        t.stop();
     }
 
     return t.nanosec * 1e-9;
 }
 
-TestStart(Unittest, "core/tree/kernels/key_pair_sort", key_pair_sort_test, 1) {
+NEW_TEST(Unittest, "core/tree/kernels/key_pair_sort", 1) {
     unit_test_key_pair<u32, MultiKernel>();
     unit_test_key_pair<u64, MultiKernel>();
 }
@@ -116,7 +116,7 @@ void wrapper_bench_key_sort(std::string name) {
     res.add_data("t_sort", results);
 }
 
-TestStart(Benchmark, "core/tree/kernels/key_pair_sort (benchmark)", key_pair_sort_bench, 1) {
+NEW_TEST(Benchmark, "core/tree/kernels/key_pair_sort (benchmark)", 1) {
 
     wrapper_bench_key_sort<u32, MultiKernel>("bitonic u32 multi kernel");
     wrapper_bench_key_sort<u32, MultiKernel>("bitonic u64 multi kernel");

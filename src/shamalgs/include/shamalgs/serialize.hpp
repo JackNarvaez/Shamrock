@@ -91,8 +91,8 @@ namespace shamalgs {
             return lhs; // return the result by value (uses move constructor)
         }
 
-        static SerializeSize Header(u64 sz) { return {sz, 0}; }
-        static SerializeSize Content(u64 sz) { return {0, sz}; }
+        static SerializeSize Header(u64 sz) { return {.head_size = sz, .content_size = 0}; }
+        static SerializeSize Content(u64 sz) { return {.head_size = 0, .content_size = sz}; }
 
         inline u64 get_total_size() { return head_size + content_size; }
     };
@@ -145,7 +145,7 @@ namespace shamalgs {
             SHAM_ASSERT(off == align_repr(len * Helper::szrepr));
 
             if (head_device + off > storage.get_size()) {
-                throw shambase::make_except_with_loc<std::runtime_error>(shambase::format(
+                throw shambase::make_except_with_loc<std::runtime_error>(sham::format(
                     "Serializer device buffer overflow: cannot move device head.\n"
                     "    storage size : {}\n"
                     "    current head_device : {}\n"
@@ -169,7 +169,7 @@ namespace shamalgs {
             SHAM_ASSERT(off == align_repr(len * Helper::szrepr));
 
             if (head_host + off > storage_header.size()) {
-                throw shambase::make_except_with_loc<std::runtime_error>(shambase::format(
+                throw shambase::make_except_with_loc<std::runtime_error>(sham::format(
                     "Serializer host buffer overflow: cannot move host head.\n"
                     "    storage_header size : {}\n"
                     "    current head_host : {}\n"
@@ -198,9 +198,11 @@ namespace shamalgs {
         SerializeHelper(std::shared_ptr<sham::DeviceScheduler> dev_sched);
 
         SerializeHelper(
-            std::shared_ptr<sham::DeviceScheduler> dev_sched, sham::DeviceBuffer<u8> &&storage);
+            std::shared_ptr<sham::DeviceScheduler> dev_sched,
+            sham::DeviceBuffer<u8> &&storage,
+            bool allow_large_int_size = false);
 
-        void allocate(SerializeSize szinfo);
+        void allocate(SerializeSize szinfo, bool allow_large_int_size = false);
 
         sham::DeviceBuffer<u8> finalize();
 
@@ -380,7 +382,7 @@ namespace shamalgs {
             check_head_move_device<T>(offset, len);
 
             if (buf.get_size() < len) {
-                shambase::throw_with_loc<std::invalid_argument>(shambase::format(
+                shambase::throw_with_loc<std::invalid_argument>(sham::format(
                     "SerializeHelper::load_buf: (buf.get_size() < len)\n  buf.get_size()={}\n  "
                     "len={}",
                     buf.get_size(),

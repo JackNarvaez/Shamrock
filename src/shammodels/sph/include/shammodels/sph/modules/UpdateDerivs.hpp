@@ -12,6 +12,7 @@
 /**
  * @file UpdateDerivs.hpp
  * @author Timothée David--Cléris (tim.shamrock@proton.me)
+ * @author Yona Lapeyre (yona.lapeyre@ens-lyon.fr)
  * @brief
  *
  */
@@ -19,6 +20,7 @@
 #include "shambackends/typeAliasVec.hpp"
 #include "shambackends/vec.hpp"
 #include "shammodels/sph/SolverConfig.hpp"
+#include "shammodels/sph/math/mhd.hpp"
 #include "shammodels/sph/modules/SolverStorage.hpp"
 #include "shamrock/scheduler/ShamrockCtx.hpp"
 
@@ -41,7 +43,7 @@ namespace shammodels::sph::modules {
         UpdateDerivs(ShamrockCtx &context, Config &solver_config, Storage &storage)
             : context(context), solver_config(solver_config), storage(storage) {}
 
-        void update_derivs();
+        void update_derivs(Tscal dt_hydro);
 
         private:
         inline PatchScheduler &scheduler() { return shambase::get_check_ref(context.sched); }
@@ -60,13 +62,29 @@ namespace shammodels::sph::modules {
         void update_derivs_cd10(VaryingCD10 cfg);
         void update_derivs_disc_visco(ConstantDisc cfg);
 
+        using DustConfig = typename Config::DustConfig;
+
+        void update_derivs_dust_monofluid_tva_Sj(DustConfig cfg, Tscal dt_hydro);
+
         using Cfg_MHD = typename Config::MHDConfig;
 
         using NoneMHD     = typename Cfg_MHD::None;
-        using IdealMHD    = typename Cfg_MHD::IdealMHD_constrained_hyper_para;
+        using IdealMHD    = typename Cfg_MHD::IdealMhdConstrainedHyperPara;
         using NonIdealMHD = typename Cfg_MHD::NonIdealMHD;
 
-        void update_derivs_MHD(IdealMHD cfg);
+        template<shamrock::sph::mhd::MHDType mhd_mode>
+        void compute_j(Tscal mu_0);
+
+        // Adds the pure MHD terms to the derivatives (the hydro ones, i.e. pressure, artificial
+        // viscosity & conductivity, must have been computed beforehand).
+        // One templated implementation, specialised per MHDType at the call sites below.
+        template<shamrock::sph::mhd::MHDType mhd_mode>
+        void update_derivs_mhd_impl(
+            Tscal sigma_mhd, Tscal alpha_B, Tscal etaO, Tscal etaH, Tscal etaAD);
+
+        // Thin wrappers that unpack the variant and forward to the template above.
+        void update_derivs_mhd(IdealMHD cfg);
+        void update_derivs_nimhd(NonIdealMHD cfg);
     };
 
 } // namespace shammodels::sph::modules

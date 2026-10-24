@@ -62,6 +62,7 @@
     X1(parsec, pc)                                                                                 \
     X1(solar_radius, rsol)                                                                         \
     X1(earth_radius, rearth)                                                                       \
+    X1(solar_mass, sol_mass)                                                                       \
     X1(electron_volt, eV)                                                                          \
     X1(ergs, erg)                                                                                  \
     X1(british_pint, pint)
@@ -147,7 +148,9 @@ namespace shamunits {
         return None; // to silence a warning
     }
 
-    namespace units {
+    /// Pre-redesign unit enum. Temporary: deleted once every user has moved to the
+    /// shamunits::units tables (see the shamunits redesign notes).
+    namespace legacy_units {
 
         // clang-format off
         /// List of all units name
@@ -200,6 +203,6 @@ namespace shamunits {
             return s; // to silence a warning
         }
 
-    } // namespace units
+    } // namespace legacy_units
 
 } // namespace shamunits

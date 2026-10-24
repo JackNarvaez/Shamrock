@@ -18,20 +18,20 @@
 
 #include "shambackends/kernel_call_distrib.hpp"
 #include "shambackends/vec.hpp"
-#include "shamrock/solvergraph/IDataEdge.hpp"
 #include "shamrock/solvergraph/IFieldSpan.hpp"
-#include "shamrock/solvergraph/INode.hpp"
 #include "shamrock/solvergraph/Indexes.hpp"
+#include "shamsolvergraph/edge/IDataEdge.hpp"
+#include "shamsolvergraph/node/INode.hpp"
 #include "shamsys/NodeInstance.hpp"
 
 /// declare the list of edges for this node
 #define NODE_EDGES(X_RO, X_RW)                                                                     \
-    /* inputs */                                                                                   \
+    /* ------------------- inputs ------------------- */                                           \
     X_RO(shamrock::solvergraph::IDataEdge<Tscal>, eta)                                             \
     X_RO(shamrock::solvergraph::IFieldSpan<Tvec>, spans_velocity)                                  \
     X_RO(shamrock::solvergraph::Indexes<u32>, sizes)                                               \
                                                                                                    \
-    /* outputs */                                                                                  \
+    /* ------------------- outputs ------------------- */                                          \
     X_RW(shamrock::solvergraph::IFieldSpan<Tvec>, spans_accel_ext)
 
 namespace shammodels::common::modules {

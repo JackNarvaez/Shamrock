@@ -20,6 +20,7 @@
 #include "shamtest/details/TestResult.hpp"
 #include "shamtest/shamtest.hpp"
 #include <cmath>
+#include <limits>
 #include <vector>
 
 template<class Ker>
@@ -97,105 +98,174 @@ inline void validate_kernel_3d(
     REQUIRE_FLOAT_EQUAL(L2_sum, 0, tol);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4", validateM4kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4", 1) {
     validate_kernel_3d<shammath::M4<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4DH", validateM4DHkernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4DH", 1) {
     validate_kernel_3d<shammath::M4DH<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4DH<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4DH3", validateM4DH3kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4DH3", 1) {
     validate_kernel_3d<shammath::M4DH3<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4DH3<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4DH5", validateM4DH5kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4DH5", 1) {
     validate_kernel_3d<shammath::M4DH5<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4DH5<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4DH7", validateM4DH7kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4DH7", 1) {
     validate_kernel_3d<shammath::M4DH7<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4DH7<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4Shift2", validateM4Shift2kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4Shift2", 1) {
     validate_kernel_3d<shammath::M4Shift2<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4Shift2<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4Shift4", validateM4Shift4kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4Shift4", 1) {
     validate_kernel_3d<shammath::M4Shift4<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4Shift4<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4Shift8", validateM4Shift8kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4Shift8", 1) {
     validate_kernel_3d<shammath::M4Shift8<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4Shift8<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M4Shift16", validateM4Shift16kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M4Shift16", 1) {
     validate_kernel_3d<shammath::M4Shift16<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M4Shift16<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M5", validateM5kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M5", 1) {
     validate_kernel_3d<shammath::M5<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::M5<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M6", validateM6kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M6", 1) {
     validate_kernel_3d<shammath::M6<f32>>(1e-3, 1e-3, 1e-3);
     validate_kernel_3d<shammath::M6<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M7", validateM7kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M7", 1) {
     validate_kernel_3d<shammath::M7<f32>>(1e-3, 1e-3, 1e-3);
     validate_kernel_3d<shammath::M7<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M8", validateM8kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M8", 1) {
     validate_kernel_3d<shammath::M8<f32>>(1e-3, 1e-3, 1e-3);
     // TODO check why do we need to reduce tol for 2D integ, value from T. Tricco 2019
     validate_kernel_3d<shammath::M8<f64>>(1e-3, 1e-5, 1e-6);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M9", validateM9kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M9", 1) {
     validate_kernel_3d<shammath::M9<f32>>(1e-3, 1e-3, 1e-3);
     validate_kernel_3d<shammath::M9<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/M10", validateM10kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/M10", 1) {
     validate_kernel_3d<shammath::M10<f32>>(1e-3, 1e-3, 1e-3);
     validate_kernel_3d<shammath::M10<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/C2", validateC2kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/C2", 1) {
     validate_kernel_3d<shammath::C2<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::C2<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/C4", validateC4kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/C4", 1) {
     validate_kernel_3d<shammath::C4<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::C4<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/C6", validateC6kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/C6", 1) {
     validate_kernel_3d<shammath::C6<f32>>(1e-3, 1e-3, 1e-3);
     validate_kernel_3d<shammath::C6<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/TGauss3", validateTGauss3kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/TGauss3", 1) {
     validate_kernel_3d<shammath::TGauss3<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::TGauss3<f64>>(1e-5, 1e-5, 1e-5);
 }
 
-TestStart(Unittest, "shammath/sphkernels/TGauss5", validateTGauss5kernel, 1) {
+NEW_TEST(Unittest, "shammath/sphkernels/TGauss5", 1) {
     validate_kernel_3d<shammath::TGauss5<f32>>(1e-3, 1e-4, 1e-3);
     validate_kernel_3d<shammath::TGauss5<f64>>(1e-5, 1e-5, 1e-5);
+}
+
+/**
+ * @brief Check the symmetric f3d_integ_z against the plain Riemann sum
+ *
+ * The symmetric version drops the z = -Rkern sample (f(Rkern) == 0), adds each mirrored sample
+ * twice and factors out the step, which reorders the floating point sum, hence the few ulp per
+ * term tolerance.
+ */
+template<class Ker, int np>
+inline void validate_f3d_integ_z_symmetric() {
+    using Tscal = typename Ker::Tscal;
+
+    auto reference = [](Tscal x) {
+        return shammath::integ_riemann_sum<Tscal>(
+            -Ker::Rkern, Ker::Rkern, Ker::Rkern / np, [&](Tscal z) {
+                return Ker::f(sycl::sqrt(sycl::fma(z, z, x * x)));
+            });
+    };
+
+    const Tscal tol = 4 * (2 * np) * std::numeric_limits<Tscal>::epsilon() * reference(0);
+
+    const int n_samples = 4096;
+    u32 mismatch        = 0;
+    for (int i = 0; i <= n_samples; i++) {
+        Tscal x   = (Tscal(i) / Tscal(n_samples)) * (Ker::Rkern + Tscal(0.5));
+        Tscal ref = reference(x);
+        mismatch += !(sycl::fabs(Ker::f3d_integ_z(x, np) - ref) <= tol);
+        mismatch += !(sycl::fabs(Ker::template f3d_integ_z<np>(x) - ref) <= tol);
+    }
+
+    REQUIRE_EQUAL_NAMED("np = " + std::to_string(np), mismatch, 0_u32);
+}
+
+template<class Ker>
+inline void validate_f3d_integ_z_symmetric_all_np() {
+    validate_f3d_integ_z_symmetric<Ker, 4>();
+    validate_f3d_integ_z_symmetric<Ker, 8>();
+    validate_f3d_integ_z_symmetric<Ker, 16>();
+    validate_f3d_integ_z_symmetric<Ker, 32>();
+}
+
+template<template<class> class Ker>
+inline void validate_f3d_integ_z_symmetric_all_types() {
+    validate_f3d_integ_z_symmetric_all_np<Ker<f32>>();
+    validate_f3d_integ_z_symmetric_all_np<Ker<f64>>();
+}
+
+NEW_TEST(Unittest, "shammath/sphkernels/f3d_integ_z_symmetric", 1) {
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4DH>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4DH3>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4DH5>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4DH7>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4Shift2>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4Shift4>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4Shift8>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M4Shift16>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M5>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M6>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M7>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M8>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M9>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::M10>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::C2>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::C4>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::C6>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::TGauss3>();
+    validate_f3d_integ_z_symmetric_all_types<shammath::TGauss5>();
 }
 
 struct Outplot {
@@ -221,7 +291,7 @@ Outplot gen_plot(std::vector<f64> &xin) {
     return out;
 }
 
-TestStart(ValidationTest, "shammath/sphkernels_plotall", plotkernels, 1) {
+NEW_TEST(ValidationTest, "shammath/sphkernels_plotall", 1) {
 
     std::vector<f64> X;
 
@@ -352,7 +422,7 @@ f64 benchmark_sph_kernel(u32 N) {
         4);
 }
 
-TestStart(Benchmark, "shammath/sphkernels_performance", kernelperf, 1) {
+NEW_TEST(Benchmark, "shammath/sphkernels_performance", 1) {
     f64 m6_f32 = benchmark_sph_kernel<shammath::M6<f32>>(10000000);
     f64 m6_f64 = benchmark_sph_kernel<shammath::M6<f64>>(10000000);
 

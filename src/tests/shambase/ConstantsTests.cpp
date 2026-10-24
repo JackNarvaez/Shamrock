@@ -8,9 +8,10 @@
 // -------------------------------------------------------//
 
 #include "shambase/constants.hpp"
+#include "shambackends/sycl.hpp"
 #include "shamtest/shamtest.hpp"
 
-TestStart(Unittest, "shambase/constants", checkconstantmatchsycl, 1) {
+NEW_TEST(Unittest, "shambase/constants", 1) {
 
     using namespace shambase::constants;
 

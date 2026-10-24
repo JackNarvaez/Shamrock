@@ -52,7 +52,7 @@ void test_binary_range_search(const std::vector<Tkey> &data, Tkey value_min, Tke
         }
     }
 
-    // shamcomm::logs::raw_ln(shambase::format(
+    // shamcomm::logs::raw_ln(sham::format(
     //    "--------\ndata = {}\nvalue_min = {}\nvalue_max = {}\ninf = {}\nsup = {}\nexpected_inf = "
     //    "{}\nexpected_sup = {}\nvalid_inf = {}\nvalid_sup = {}",
     //    data,
@@ -69,7 +69,7 @@ void test_binary_range_search(const std::vector<Tkey> &data, Tkey value_min, Tke
     REQUIRE_EQUAL(expected_sup, sup);
 }
 
-TestStart(Unittest, "shamalgs/primitives/binary_range_search", test_binary_range_search, 1) {
+NEW_TEST(Unittest, "shamalgs/primitives/binary_range_search", 1) {
 
     {
         // Test with empty array

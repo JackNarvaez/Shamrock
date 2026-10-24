@@ -24,38 +24,6 @@
 
 namespace shammodels::sph {
 
-    template<class vec, class SPHKernel, class u_morton>
-    class SPHTreeUtilities {
-
-        public:
-        using flt = shambase::VecComponent<vec>;
-
-        static constexpr flt Rkern = SPHKernel::Rkern;
-
-        using GhostHndl = BasicSPHGhostHandler<vec>;
-        using InterfBuildCache
-            = shambase::DistributedDataShared<typename GhostHndl::InterfaceIdTable>;
-
-        PatchScheduler &sched;
-
-        SPHTreeUtilities(PatchScheduler &sched) : sched(sched) {}
-
-        static void iterate_smoothing_length_tree(
-
-            sycl::buffer<vec> &merged_r,
-            sycl::buffer<flt> &hnew,
-            sycl::buffer<flt> &hold,
-            sycl::buffer<flt> &eps_h,
-            sycl::range<1> update_range,
-            RadixTree<u_morton, vec> &tree,
-
-            flt gpart_mass,
-            flt h_evol_max,
-            flt h_evol_iter_max
-
-        );
-    };
-
     /**
      * @brief handle basic utilities dealing with SPH
      *
@@ -117,33 +85,6 @@ namespace shammodels::sph {
             flt h_evol_iter_max
 
         );
-
-        template<class u_morton>
-        static void iterate_smoothing_length_tree(
-
-            sycl::buffer<vec> &merged_r,
-            sycl::buffer<flt> &hnew,
-            sycl::buffer<flt> &hold,
-            sycl::buffer<flt> &eps_h,
-            sycl::range<1> update_range,
-            RadixTree<u_morton, vec> &tree,
-
-            flt gpart_mass,
-            flt h_evol_max,
-            flt h_evol_iter_max
-
-        ) {
-            SPHTreeUtilities<vec, SPHKernel, u_morton>::iterate_smoothing_length_tree(
-                merged_r,
-                hnew,
-                hold,
-                eps_h,
-                update_range,
-                tree,
-                gpart_mass,
-                h_evol_max,
-                h_evol_iter_max);
-        }
 
         static void compute_omega(
             sham::DeviceBuffer<vec> &merged_r,

@@ -66,7 +66,8 @@ inline void register_DeviceBuffer(py::module &m, const char *class_name) {
         });
 }
 
-Register_pymod(shambackendslibinit) {
+ON_PYTHON_INIT {
+    auto &m = root_module;
 
     py::module shambackends_module = m.def_submodule("backends", "backend library");
 
@@ -136,7 +137,7 @@ Register_pymod(shambackendslibinit) {
         .def(
             "__str__",
             [](const sham::MemPerfInfos &mem_perf_infos) {
-                return shambase::format(
+                return sham::format(
                     "MemPerfInfos(\n"
                     "    time_alloc_host=\"{0:}\",\n"
                     "    time_alloc_device=\"{1:}\",\n"
@@ -164,7 +165,7 @@ Register_pymod(shambackendslibinit) {
                     mem_perf_infos.max_allocated_byte_shared);
             })
         .def("__repr__", [](const sham::MemPerfInfos &mem_perf_infos) {
-            return shambase::format(
+            return sham::format(
                 "MemPerfInfos(\n"
                 "    time_alloc_host=\"{0:}\",\n"
                 "    time_alloc_device=\"{1:}\",\n"

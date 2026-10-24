@@ -38,7 +38,13 @@ if not shamrock.sys.is_initialized():
     shamrock.change_loglevel(1)
     shamrock.sys.init("0:0")
 
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
 
+
+# %%
+# Toro IC
 def toro_initial_conditions(test_number: int):
     def cond(i):
         conditions = {
@@ -247,7 +253,7 @@ def gif_results(data, tmax, test_number, case_anim):
 
     arr_x = [x[0] for x in positions_plot]
 
-    import matplotlib.animation as animation
+    from matplotlib import animation
 
     fig2, axes = plt.subplots(3, 1, figsize=(8, 10))
     fig2.suptitle(f"{case_anim} - t = {0.0:.3f} s", fontsize=14)

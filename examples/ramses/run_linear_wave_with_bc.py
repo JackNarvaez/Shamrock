@@ -9,9 +9,9 @@ Boundary conditions for linear wave propagation
 import os
 
 import matplotlib
-import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import animation
 
 import shamrock
 
@@ -20,6 +20,11 @@ import shamrock
 if not shamrock.sys.is_initialized():
     shamrock.change_loglevel(1)
     shamrock.sys.init("0:0")
+
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
 
 # %%
 # Setup parameters

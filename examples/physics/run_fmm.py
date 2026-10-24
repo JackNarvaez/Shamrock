@@ -15,6 +15,11 @@ from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 import shamrock
 
 # %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+
+# %%
 # Utilities
 # ^^^^^^^^^
 # You can ignore this first block, it just contains some utility functions to draw the AABB and the arrows
@@ -217,6 +222,7 @@ def plot_mass_moment_case(s_B, box_B_size, x_j):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+    ax.minorticks_off()
 
     draw_arrow(ax, s_B, x_j, "black", "$b_j = x_j - s_B$")
 
@@ -345,6 +351,7 @@ def plot_grav_moment_case(s_A, box_A_size, s_B, box_B_size, x_j):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+    ax.minorticks_off()
 
     draw_arrow(ax, s_B, x_j, "black", "$b_j = x_j - s_B$")
 
@@ -451,6 +458,7 @@ def plot_fmm_case(s_A, box_A_size, x_i, s_B, box_B_size, x_j, f_i_fmm, f_i_exact
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+    ax.minorticks_off()
 
     draw_arrow(ax, s_B, x_j, "black", "$b_j = x_j - s_B$")
     draw_arrow(ax, s_A, x_i, "blue", "$a_i = x_i - s_A$")
@@ -914,7 +922,7 @@ plt.show()
 # We start with the upward pass for the mass moment. To perform it we need
 # to compute the mass moment of a parent according to the one of its children.
 # The issue is that the childrens and the parents do not share the same center.
-# Therefor we need to offset the mass moment of the children to the parent
+# Therefore we need to offset the mass moment of the children to the parent
 # center before summing their moments to get the parent's one.
 #
 # This is what we call mass moment translation/offset. This section will
@@ -970,6 +978,7 @@ def plot_mass_moment_offset(s_B, s_B_new, box_B_size):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+    ax.minorticks_off()
 
     draw_arrow(ax, s_B, x_j, "black", "$b_j = x_j - s_B$")
     draw_arrow(ax, s_B_new, x_j, "red", "$b_j' = x_j - s_B'$")
@@ -1089,7 +1098,7 @@ def tensor_collect_norm(d):
     elif isinstance(d, shamrock.math.SymTensorCollection_f64_1_1):
         return np.sqrt(d.t1.inner(d.t1))
     else:
-        raise ValueError(f"Unsupported tensor collection type: {type(d)}")
+        raise TypeError(f"Unsupported tensor collection type: {type(d)}")
 
 
 print("Q_n_B norm =", tensor_collect_norm(Q_n_B))
@@ -1131,7 +1140,7 @@ print("rel error =", tensor_collect_norm(delta) / tensor_collect_norm(Q_n_Bp))
 
 plt.figure()
 
-for order in range(0, 6):
+for order in range(6):
     # set seed
     rng = np.random.default_rng(111)
 
@@ -1312,6 +1321,7 @@ def plot_grav_moment_offset(s_A, s_Ap, s_B, box_A_size, box_B_size, x_j):
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection="3d")
+    ax.minorticks_off()
 
     draw_arrow(ax, s_A, s_B, "purple", "$r = s_B - s_A$")
     draw_arrow(ax, s_Ap, s_B, "purple", "$r' = s_B - s_A'$")

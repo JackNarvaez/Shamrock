@@ -19,6 +19,7 @@
  */
 
 #include "shambase/exception.hpp"
+#include "shambase/overloaded.hpp"
 #include "config/AVConfig.hpp"
 #include "config/BCConfig.hpp"
 #include "shambackends/math.hpp"
@@ -29,6 +30,7 @@
 #include "shammath/sphkernels.hpp"
 #include "shammodels/common/EOSConfig.hpp"
 #include "shammodels/common/ExtForceConfig.hpp"
+#include "shammodels/common/config/enum_NeighCacheStrategy.hpp"
 #include "shammodels/sph/config/MHDConfig.hpp"
 #include "shamrock/experimental_features.hpp"
 #include "shamrock/io/json_print_diff.hpp"
@@ -43,6 +45,7 @@
 #include "shamtree/RadixTree.hpp"
 #include <shamunits/Constants.hpp>
 #include <shamunits/UnitSystem.hpp>
+#include <stdexcept>
 #include <variant>
 #include <vector>
 
@@ -58,14 +61,6 @@ namespace shammodels::sph {
     struct SolverConfig;
 
     /**
-     * @brief Solver status variables
-     *
-     * @tparam Tvec the type of the vector used to represent the particles
-     */
-    template<class Tvec>
-    struct SolverStatusVar;
-
-    /**
      * @brief The configuration for the CFL condition
      *
      * @tparam Tscal the type of the scalar used to represent the quantities
@@ -76,12 +71,17 @@ namespace shammodels::sph {
         /**
          * @brief The CFL condition for the courant factor
          */
-        Tscal cfl_cour;
+        Tscal cfl_cour = 0.3;
 
         /**
          * @brief The CFL condition for the force
          */
-        Tscal cfl_force;
+        Tscal cfl_force = 0.25;
+
+        /**
+         * @brief The CFL condition for the non-ideal MHD terms
+         */
+        Tscal cfl_NIMHD = 1. / (2 * shambase::constants::pi<Tscal>); // as in phantom
 
         /**
          * @brief The CFL multiplier stiffness
@@ -110,12 +110,48 @@ namespace shammodels::sph {
     };
 
     template<class Tscal>
+    struct DustEvolCoalaCoag {
+        Tscal rhodust_eps;
+
+        /// Fragmentation velocity threshold, must be positive (infinity disables it).
+        /// In coagulation-only mode, a dust pair whose differential velocity exceeds it gets
+        /// dv_ij = 0 ("poor man" fragmentation, not a real fragmentation model).
+        Tscal vfrag_threshold;
+        std::vector<Tscal> massgrid;
+        std::vector<Tscal> tabflux_coag;
+    };
+
+    template<class Tscal>
     struct DustConfig {
 
         struct None {};
 
-        struct MonofluidTVI {
+        struct MonofluidTVA {
             u32 ndust;
+            bool pure_diffusion_mode = false;
+
+            Tscal C_1_fluid             = 0.1;
+            Tscal C_drift               = 1.0;
+            Tscal cfl_density_threshold = shambase::get_epsilon<Tscal>();
+
+            bool ensure_s_j_positivity = true;
+
+            bool smooth_s_positivity_limiter = false;
+
+            // use the corrected q_AV from Hutchison 2018 & Price Laibe 15
+            bool dust_corrected_av = false;
+
+            // Fraction of rho(h) that the dust density (per-species and summed) is clamped to.
+            // The clamp runs only when this is set.
+            std::optional<Tscal> clamp_dust_frac = std::nullopt;
+
+            static constexpr Tscal default_clamp_dust_frac = 0.99;
+
+            inline bool should_clamp_dust_density() const { return clamp_dust_frac.has_value(); }
+
+            inline Tscal get_clamp_dust_frac() const {
+                return clamp_dust_frac.value_or(default_clamp_dust_frac);
+            }
         };
 
         struct MonofluidComplete {
@@ -123,17 +159,102 @@ namespace shammodels::sph {
         };
 
         /// Variant type to store the EOS configuration
-        using Variant = std::variant<None, MonofluidTVI, MonofluidComplete>;
+        using Variant = std::variant<None, MonofluidTVA, MonofluidComplete>;
 
         Variant current_mode = None{};
 
         inline void set_none() { current_mode = None{}; }
-        inline void set_monofluid_tvi(u32 nvar) { current_mode = MonofluidTVI{nvar}; }
+        inline void set_monofluid_tva(
+            u32 nvar,
+            bool pure_diffusion_mode             = false,
+            Tscal C_1_fluid                      = 0.1,
+            Tscal C_drift                        = 1.0,
+            Tscal cfl_density_threshold          = shambase::get_epsilon<Tscal>(),
+            bool ensure_s_j_positivity           = true,
+            bool smooth_s_positivity_limiter     = false,
+            bool dust_corrected_av               = false,
+            std::optional<Tscal> clamp_dust_frac = std::nullopt) {
+            current_mode = MonofluidTVA{
+                nvar,
+                pure_diffusion_mode,
+                C_1_fluid,
+                C_drift,
+                cfl_density_threshold,
+                ensure_s_j_positivity,
+                smooth_s_positivity_limiter,
+                dust_corrected_av,
+                clamp_dust_frac};
+        }
         inline void set_monofluid_complete(u32 nvar) { current_mode = MonofluidComplete{nvar}; }
 
+        inline bool is_none() { return std::holds_alternative<None>(current_mode); }
+        inline bool is_monofluid_tva() { return bool(std::get_if<MonofluidTVA>(&current_mode)); }
+        inline bool is_monofluid_complete() {
+            return bool(std::get_if<MonofluidComplete>(&current_mode));
+        }
+
+        inline MonofluidTVA &get_monofluid_tva() {
+            return shambase::get_check_ref(std::get_if<MonofluidTVA>(&current_mode));
+        }
+
+        inline void mode_to_json(nlohmann::json &j) const {
+            if (const None *cfg = std::get_if<None>(&current_mode)) {
+                j = {{"type", "none"}};
+            } else if (const MonofluidTVA *cfg = std::get_if<MonofluidTVA>(&current_mode)) {
+                j
+                    = {{"type", "monofluid_tva"},
+                       {"ndust", cfg->ndust},
+                       {"pure_diffusion_mode", cfg->pure_diffusion_mode},
+                       {"C_1_fluid", cfg->C_1_fluid},
+                       {"C_drift", cfg->C_drift},
+                       {"cfl_density_threshold", cfg->cfl_density_threshold},
+                       {"ensure_s_j_positivity", cfg->ensure_s_j_positivity},
+                       {"smooth_s_positivity_limiter", cfg->smooth_s_positivity_limiter},
+                       {"dust_corrected_av", cfg->dust_corrected_av},
+                       {"clamp_dust_frac", cfg->clamp_dust_frac}};
+            } else if (
+                const MonofluidComplete *cfg = std::get_if<MonofluidComplete>(&current_mode)) {
+                j = {{"type", "monofluid_complete"}, {"ndust", cfg->ndust}};
+            } else {
+                shambase::throw_unimplemented();
+            }
+        }
+
+        inline void mode_from_json(const nlohmann::json &j) {
+            const std::string type = j.at("type").get<std::string>();
+            if (type == "none") {
+                set_none();
+            } else if (type == "monofluid_tva") {
+                set_monofluid_tva(
+                    j.at("ndust").get<u32>(),
+                    j.at("pure_diffusion_mode").get<bool>(),
+                    j.at("C_1_fluid").get<Tscal>(),
+                    j.at("C_drift").get<Tscal>(),
+                    j.at("cfl_density_threshold").get<Tscal>(),
+                    j.at("ensure_s_j_positivity").get<bool>(),
+                    j.value("smooth_s_positivity_limiter", false),
+                    j.value("dust_corrected_av", false),
+                    j.value("clamp_dust_frac", std::optional<Tscal>{}));
+            } else if (type == "monofluid_complete") {
+                set_monofluid_complete(j.at("ndust").get<u32>());
+            } else {
+                shambase::throw_unimplemented();
+            }
+        }
+
+        inline bool has_s_j_field() {
+            return is_monofluid_tva(); // S_j = sqrt(\rho \epsilon_j)
+        }
+
+        inline bool should_use_dust_av() {
+            if (!is_monofluid_tva()) {
+                return false;
+            }
+            return get_monofluid_tva().dust_corrected_av;
+        }
+
         inline bool has_epsilon_field() {
-            return bool(std::get_if<MonofluidTVI>(&current_mode))
-                   || bool(std::get_if<MonofluidComplete>(&current_mode));
+            return bool(std::get_if<MonofluidComplete>(&current_mode));
         }
 
         inline bool has_deltav_field() {
@@ -143,9 +264,9 @@ namespace shammodels::sph {
         inline u32 get_dust_nvar() {
             if (None *cfg = std::get_if<None>(&current_mode)) {
                 shambase::throw_with_loc<std::invalid_argument>(
-                    "Querrying a dust nvar with no dust as config is ... discutable ...");
+                    "Querying a dust nvar with no dust as config is ... discutable ...");
                 return 0;
-            } else if (MonofluidTVI *cfg = std::get_if<MonofluidTVI>(&current_mode)) {
+            } else if (MonofluidTVA *cfg = std::get_if<MonofluidTVA>(&current_mode)) {
                 return cfg->ndust;
             } else if (MonofluidComplete *cfg = std::get_if<MonofluidComplete>(&current_mode)) {
                 return cfg->ndust;
@@ -155,14 +276,174 @@ namespace shammodels::sph {
             return 0;
         }
 
+        struct ConstantStoppingTimes {
+            std::vector<Tscal> stopping_times;
+        };
+
+        struct EpsteinDrag {
+            static constexpr bool supersonic_correction = false;
+            Tscal gamma;
+            std::vector<Tscal> grains_sizes;
+            std::vector<Tscal> grains_densities;
+        };
+
+        std::variant<None, ConstantStoppingTimes, EpsteinDrag> dust_drag_mode = None{};
+
+        bool ballabio_ts_limiter = false;
+
+        inline void drag_mode_to_json(nlohmann::json &j) const {
+            if (std::holds_alternative<None>(dust_drag_mode)) {
+                j = {{"type", "none"}};
+            } else if (
+                const ConstantStoppingTimes *cfg
+                = std::get_if<ConstantStoppingTimes>(&dust_drag_mode)) {
+                j = {{"type", "constant_stopping_times"}, {"stopping_times", cfg->stopping_times}};
+            } else if (const EpsteinDrag *cfg = std::get_if<EpsteinDrag>(&dust_drag_mode)) {
+                j
+                    = {{"type", "epstein_drag"},
+                       {"gamma", cfg->gamma},
+                       {"grains_sizes", cfg->grains_sizes},
+                       {"grains_densities", cfg->grains_densities}};
+            } else {
+                shambase::throw_unimplemented();
+            }
+        }
+
+        inline void drag_mode_from_json(const nlohmann::json &j) {
+            if (j.at("type").get<std::string>() == "none") {
+                dust_drag_mode = None{};
+            } else if (j.at("type").get<std::string>() == "constant_stopping_times") {
+                dust_drag_mode
+                    = ConstantStoppingTimes{j.at("stopping_times").get<std::vector<Tscal>>()};
+            } else if (j.at("type").get<std::string>() == "epstein_drag") {
+                dust_drag_mode = EpsteinDrag{
+                    j.at("gamma").get<Tscal>(),
+                    j.at("grains_sizes").get<std::vector<Tscal>>(),
+                    j.at("grains_densities").get<std::vector<Tscal>>()};
+            } else {
+                shambase::throw_unimplemented();
+            }
+        }
+
+        inline void set_drag_constant(ConstantStoppingTimes in) { dust_drag_mode = std::move(in); }
+
+        inline void set_drag_epstein(EpsteinDrag in) { dust_drag_mode = std::move(in); }
+
+        std::variant<None, DustEvolCoalaCoag<Tscal>> dust_evol_config = None{};
+
+        inline void evol_mode_to_json(nlohmann::json &j) const {
+            std::visit(
+                shambase::overloaded{
+                    [&](const None &) {
+                        j = {{"type", "none"}};
+                    },
+                    [&](const DustEvolCoalaCoag<Tscal> &cfg) {
+                        j
+                            = {{"type", "coala_coag"},
+                               {"rhodust_eps", cfg.rhodust_eps},
+                               {"vfrag_threshold", cfg.vfrag_threshold},
+                               {"massgrid", cfg.massgrid},
+                               {"tabflux_coag", cfg.tabflux_coag}};
+                    },
+                },
+                dust_evol_config);
+        }
+
+        inline void evol_mode_from_json(const nlohmann::json &j) {
+            if (j.at("type").get<std::string>() == "none") {
+                dust_evol_config = None{};
+            } else if (j.at("type").get<std::string>() == "coala_coag") {
+                dust_evol_config = DustEvolCoalaCoag<Tscal>{
+                    .rhodust_eps     = j.at("rhodust_eps").get<Tscal>(),
+                    .vfrag_threshold = j.at("vfrag_threshold").get<Tscal>(),
+                    .massgrid        = j.at("massgrid").get<std::vector<Tscal>>(),
+                    .tabflux_coag    = j.at("tabflux_coag").get<std::vector<Tscal>>()};
+            } else {
+                shambase::throw_unimplemented();
+            }
+        }
+
+        inline void set_dust_evol_coala(DustEvolCoalaCoag<Tscal> cfg) { dust_evol_config = cfg; }
+
         inline void check_config() {
-            bool is_not_none = bool(std::get_if<MonofluidTVI>(&current_mode))
-                               || bool(std::get_if<MonofluidComplete>(&current_mode));
+            bool is_not_none = !is_none();
             if (is_not_none) {
-                ON_RANK_0(
-                    logger::warn_ln(
-                        "SPH::config",
-                        "Dust config != None is work in progress, use it at your own risk"));
+
+                if (!shamrock::are_experimental_features_allowed()) {
+                    shambase::throw_with_loc<std::runtime_error>(
+                        "Dust config != None is experimental");
+                } else {
+                    ON_RANK_0(
+                        logger::warn_ln(
+                            "SPH::config",
+                            "Dust config != None is work in progress, use it at your own risk"));
+                }
+
+                if (std::holds_alternative<None>(dust_drag_mode)) {
+                    throw shambase::make_except_with_loc<std::runtime_error>(
+                        "you must select a drag mode for the dust if the dust is on !");
+                } else if (
+                    ConstantStoppingTimes *cfg
+                    = std::get_if<ConstantStoppingTimes>(&dust_drag_mode)) {
+                    if (get_dust_nvar() != cfg->stopping_times.size()) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "stopping_times size does not match the number of dust bins");
+                    }
+                } else if (EpsteinDrag *cfg = std::get_if<EpsteinDrag>(&dust_drag_mode)) {
+                    if (get_dust_nvar() != cfg->grains_densities.size()) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "grains_densities size does not match the number of dust bins");
+                    }
+
+                    if (get_dust_nvar() != cfg->grains_sizes.size()) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "grains_sizes size does not match the number of dust bins");
+                    }
+                }
+            }
+
+            if (!std::holds_alternative<None>(dust_evol_config) && is_not_none) {
+
+                if (DustEvolCoalaCoag<Tscal> *cfg
+                    = std::get_if<DustEvolCoalaCoag<Tscal>>(&dust_evol_config)) {
+
+                    u32 ndust = get_dust_nvar();
+
+                    if (cfg->massgrid.size() - 1 != ndust) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "massgrid must have ndust + 1 = " + std::to_string(ndust + 1)
+                            + " entries for ndust = " + std::to_string(ndust) + ", got "
+                            + std::to_string(cfg->massgrid.size()));
+                    }
+
+                    if (cfg->tabflux_coag.size() != ndust * ndust * ndust) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "tabflux_coag must have ndust^3 = "
+                            + std::to_string(ndust * ndust * ndust)
+                            + " entries for ndust = " + std::to_string(ndust) + ", got "
+                            + std::to_string(cfg->tabflux_coag.size()));
+                    }
+
+                    if (cfg->rhodust_eps <= 0) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "rhodust_eps must be positive, got "
+                            + std::to_string(cfg->rhodust_eps));
+                    }
+
+                    if (cfg->vfrag_threshold <= 0) {
+                        throw shambase::make_except_with_loc<std::invalid_argument>(
+                            "vfrag_threshold must be positive, got "
+                            + std::to_string(cfg->vfrag_threshold));
+                    }
+
+                } else {
+                    shambase::throw_unimplemented();
+                }
+
+            } else if (!std::holds_alternative<None>(dust_evol_config) && is_none()) {
+                throw shambase::make_except_with_loc<std::invalid_argument>(
+                    "cannot enable dust evolution because the dust mode is 'none', call "
+                    "set_dust_mode_* before set_dust_evol_coala");
             }
         }
     };
@@ -172,8 +453,9 @@ namespace shammodels::sph {
         struct DensityBasedNeighLim {
             u32 max_neigh_count = 500;
         };
+        struct DensityBasedBisectingNR {};
 
-        using mode = std::variant<DensityBased, DensityBasedNeighLim>;
+        using mode = std::variant<DensityBased, DensityBasedNeighLim, DensityBasedBisectingNR>;
 
         mode config = DensityBased{};
 
@@ -181,9 +463,13 @@ namespace shammodels::sph {
         void set_density_based_neigh_lim(u32 max_neigh_count) {
             config = DensityBasedNeighLim{max_neigh_count};
         }
+        void set_density_based_bisecting_nr() { config = DensityBasedBisectingNR{}; }
 
         bool is_density_based_neigh_lim() const {
             return std::holds_alternative<DensityBasedNeighLim>(config);
+        }
+        bool is_density_based_bisecting_nr() const {
+            return std::holds_alternative<DensityBasedBisectingNR>(config);
         }
     };
 
@@ -221,13 +507,21 @@ namespace shammodels::sph {
         void set_none() { config = None{}; }
         void set_direct(bool reference_mode = false) { config = Direct{reference_mode}; }
         void set_mm(u32 mm_order, f64 opening_angle, u32 reduction_level) {
-            config = MM{mm_order, opening_angle, reduction_level};
+            config = MM{
+                .order           = mm_order,
+                .opening_angle   = opening_angle,
+                .reduction_level = reduction_level};
         }
         void set_fmm(u32 order, f64 opening_angle, u32 reduction_level) {
-            config = FMM{order, opening_angle, reduction_level};
+            config = FMM{
+                .order = order, .opening_angle = opening_angle, .reduction_level = reduction_level};
         }
         void set_sfmm(u32 order, f64 opening_angle, bool leaf_lowering, u32 reduction_level) {
-            config = SFMM{order, opening_angle, leaf_lowering, reduction_level};
+            config = SFMM{
+                .order           = order,
+                .opening_angle   = opening_angle,
+                .leaf_lowering   = leaf_lowering,
+                .reduction_level = reduction_level};
         }
 
         bool is_none() const { return std::holds_alternative<None>(config); }
@@ -256,18 +550,6 @@ namespace shammodels::sph {
 
 } // namespace shammodels::sph
 
-template<class Tvec>
-struct shammodels::sph::SolverStatusVar {
-
-    /// The type of the scalar used to represent the quantities
-    using Tscal = shambase::VecComponent<Tvec>;
-
-    Tscal time   = 0; ///< Current time
-    Tscal dt_sph = 0; ///< Current time step
-
-    Tscal cfl_multiplier = 1e-2; ///< Current cfl multiplier
-};
-
 template<class Tvec, template<class> class SPHKernel>
 struct shammodels::sph::SolverConfig {
 
@@ -285,8 +567,7 @@ struct shammodels::sph::SolverConfig {
     /// The radius of the sph kernel
     static constexpr Tscal Rkern = Kernel::Rkern;
 
-    Tscal gpart_mass;            ///< The mass of each gas particle
-    CFLConfig<Tscal> cfl_config; ///< The configuration for the CFL condition
+    Tscal gpart_mass{0}; ///< The mass of each gas particle (must be set before use)
 
     bool track_particles_id = false;
 
@@ -352,32 +633,10 @@ struct shammodels::sph::SolverConfig {
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////////////////////////
-    // Solver status variables
+    // CFL Configuration (config)
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    /// Alias to SolverStatusVar type
-    using SolverStatusVar = SolverStatusVar<Tvec>;
-
-    /// The time sate of the simulation
-    SolverStatusVar time_state;
-
-    /// Set the current time
-    inline void set_time(Tscal t) { time_state.time = t; }
-
-    /// Set the time step for the next iteration
-    inline void set_next_dt(Tscal dt) { time_state.dt_sph = dt; }
-
-    /// Get the current time
-    inline Tscal get_time() { return time_state.time; }
-
-    /// Get the time step for the next iteration
-    inline Tscal get_dt_sph() { return time_state.dt_sph; }
-
-    /// Set the CFL multiplier for the time step
-    inline void set_cfl_multipler(Tscal lambda) { time_state.cfl_multiplier = lambda; }
-
-    /// Get the CFL multiplier for the time step
-    inline Tscal get_cfl_multipler() { return time_state.cfl_multiplier; }
+    CFLConfig<Tscal> cfl_config; ///< The configuration for the CFL condition
 
     /// Set the CFL multiplier for the stiffness
     inline void set_cfl_mult_stiffness(Tscal cstiff) {
@@ -387,8 +646,10 @@ struct shammodels::sph::SolverConfig {
     /// Get the CFL multiplier for the stiffness
     inline Tscal get_cfl_mult_stiffness() { return cfl_config.cfl_multiplier_stiffness; }
 
+    bool show_cfl_detail = false;
+
     //////////////////////////////////////////////////////////////////////////////////////////////
-    // Solver status variables (END)
+    // CFL Configuration (END)
     //////////////////////////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////////////////////////
@@ -405,11 +666,27 @@ struct shammodels::sph::SolverConfig {
     }
 
     /// Enable the ideal MHD hydro solver
-    inline void set_IdealMHD(typename MHDConfig::IdealMHD_constrained_hyper_para v) {
+    inline void set_ideal_mhd(typename MHDConfig::IdealMhdConstrainedHyperPara v) {
         mhd_config.set(v);
     }
 
-    inline void set_NonIdealMHD(typename MHDConfig::NonIdealMHD v) { mhd_config.set(v); }
+    inline void set_non_ideal_mhd(typename MHDConfig::NonIdealMHD v) {
+        logger::raw_ln("$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$");
+        logger::raw_ln(" ______   _______  __    _  _______  _______  ______  ");
+        logger::raw_ln("|      | |   _   ||  |  | ||       ||       ||    _ | ");
+        logger::raw_ln("|  _    ||  |_|  ||   |_| ||    ___||    ___||   | ||");
+        logger::raw_ln("| | |   ||       ||       ||   | __ |   |___ |   |_||_");
+        logger::raw_ln("| |_|   ||       ||  _    ||   ||  ||    ___||    __  |");
+        logger::raw_ln("|       ||   _   || | |   ||   |_| ||   |___ |   |  | |");
+        logger::raw_ln("|______| |__| |__||_|  |__||_______||_______||___|  |_|");
+        logger::raw_ln("$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$DANGER$");
+        logger::raw_ln("The Non-ideal MHD solver is UNDER DEVELOPMENT.");
+        logger::raw_ln("It is. NOT. FULLY. TESTED. YET.");
+        logger::raw_ln("Use at your own risk.");
+        shamrock::experimental_feature_check(
+            "Non-ideal MHD is experimental, please enable experimental features to use it");
+        mhd_config.set(v);
+    }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
     // MHD Config (END)
@@ -440,13 +717,31 @@ struct shammodels::sph::SolverConfig {
     // Tree config
     //////////////////////////////////////////////////////////////////////////////////////////////
 
-    u32 tree_reduction_level  = 3;    ///< Reduction level to be used in the tree build
-    bool use_two_stage_search = true; ///< Use two stage neighbors search (see shamrock paper)
+    u32 tree_reduction_level = 3; ///< Reduction level to be used in the tree build
+
+    /// Strategy used to build the neighbours cache out of the tree traversal
+    NeighCacheStrategy neigh_cache_strategy = NeighCacheStrategy::TwoStage;
 
     /// Setter for the tree reduction level
     inline void set_tree_reduction_level(u32 level) { tree_reduction_level = level; }
-    /// Setter for the two stage search
-    inline void set_two_stage_search(bool enable) { use_two_stage_search = enable; }
+
+    /// Setter for the neighbours cache strategy
+    inline void set_neigh_cache_strategy(NeighCacheStrategy strategy) {
+        neigh_cache_strategy = strategy;
+    }
+
+    /**
+     * @brief Setter for the two stage search
+     * @deprecated Use set_neigh_cache_strategy instead
+     */
+    inline void set_two_stage_search(bool enable) {
+        ON_RANK_0(shamlog_warn_ln(
+                      "SPH::SolverConfig",
+                      "set_two_stage_search() is deprecated,\n"
+                      "    -> use set_neigh_cache_strategy(NeighCacheStrategy.TwoStage) or\n"
+                      "       set_neigh_cache_strategy(NeighCacheStrategy.SingleStage) instead"););
+        neigh_cache_strategy = neigh_cache_strategy_from_two_stage_search(enable);
+    }
 
     bool show_neigh_stats = false;
     inline void set_show_neigh_stats(bool enable) { show_neigh_stats = enable; }
@@ -475,6 +770,9 @@ struct shammodels::sph::SolverConfig {
     }
     inline void set_smoothing_length_density_based_neigh_lim(u32 max_neigh_count) {
         smoothing_length_config.set_density_based_neigh_lim(max_neigh_count);
+    }
+    inline void set_smoothing_length_density_based_bisecting_nr() {
+        smoothing_length_config.set_density_based_bisecting_nr();
     }
 
     bool enable_particle_reordering = false;
@@ -754,9 +1052,21 @@ struct shammodels::sph::SolverConfig {
      *
      * @param[in] central_mass The mass of the central object
      * @param[in] Racc The accretion radius of the central object
+     * @param[in] central_pos The position of the central object
      */
-    inline void add_ext_force_point_mass(Tscal central_mass, Tscal Racc) {
-        ext_force_config.add_point_mass(central_mass, Racc);
+    inline void add_ext_force_point_mass(
+        Tscal central_mass, Tscal Racc, Tvec central_pos = Tvec{}) {
+        ext_force_config.add_point_mass(central_mass, Racc, central_pos);
+    }
+
+    /**
+     * @brief Add a post-newtonian Paczynski-Wiita potential
+     *
+     * @param[in] central_mass The mass of the central object
+     * @param[in] Racc The accretion radius of the central object
+     */
+    inline void add_ext_force_paczynski_wiita(Tscal central_mass, Tvec central_pos, Tscal Racc) {
+        ext_force_config.add_paczynski_wiita(central_mass, central_pos, Racc);
     }
 
     /**
@@ -766,10 +1076,11 @@ struct shammodels::sph::SolverConfig {
      * @param[in] Racc The accretion radius of the central object
      * @param[in] a_spin The spin of the central object
      * @param[in] dir_spin The direction of the spin of the central object
+     * @param[in] central_pos The position of the central object
      */
     inline void add_ext_force_lense_thirring(
-        Tscal central_mass, Tscal Racc, Tscal a_spin, Tvec dir_spin) {
-        ext_force_config.add_lense_thirring(central_mass, Racc, a_spin, dir_spin);
+        Tscal central_mass, Tscal Racc, Tscal a_spin, Tvec dir_spin, Tvec central_pos = Tvec{}) {
+        ext_force_config.add_lense_thirring(central_mass, Racc, a_spin, dir_spin, central_pos);
     }
 
     /**
@@ -844,24 +1155,34 @@ struct shammodels::sph::SolverConfig {
         return artif_viscosity.has_field_soundspeed() || is_eos_locally_isothermal();
     }
 
+    /// @brief Whether the solver is set for non ideal MHD
+    inline bool do_nimhd() { return mhd_config.do_nimhd(); }
+
     /// @brief Whether the solver has a field for B_on_rho
-    inline bool has_field_B_on_rho() { return mhd_config.has_B_field() && (dim == 3); }
+    inline bool has_field_b_on_rho() { return mhd_config.has_b_field() && (dim == 3); }
 
     /// @brief Whether the solver has a field for psi_on_ch
     inline bool has_field_psi_on_ch() { return mhd_config.has_psi_field(); }
 
     /// @brief Whether the solver has a field for divB
-    inline bool has_field_divB() { return mhd_config.has_divB_field(); }
+    inline bool has_field_div_b() { return mhd_config.has_div_b_field(); }
 
     /// @brief Whether the solver has a field for curlB
-    inline bool has_field_curlB() { return mhd_config.has_curlB_field() && (dim == 3); }
+    inline bool has_field_curl_b() { return mhd_config.has_curl_b_field() && (dim == 3); }
 
     /// @brief Whether the solver has a field for dt divB
-    inline bool has_field_dtdivB() { return mhd_config.has_dtdivB_field(); }
+    inline bool has_field_dtdiv_b() { return mhd_config.has_dtdiv_b_field(); }
 
     /// @brief Whether to store luminosity
     bool compute_luminosity = false;
     inline void use_luminosity(bool enable) { compute_luminosity = enable; }
+
+    /// @brief Whether to compute GW
+    bool compute_gw = false;
+    inline void use_GW(bool enable) {
+        shamrock::experimental_feature_check("GW computation is experimental.");
+        compute_gw = enable;
+    }
 
     /// Print the current status of the solver config
     inline void print_status() {
@@ -875,25 +1196,25 @@ struct shammodels::sph::SolverConfig {
 
     inline void check_config() {
         dust_config.check_config();
+        mhd_config.check_config();
 
         if (track_particles_id && false /*particle injection when added*/) {
-            if (!shamrock::are_experimental_features_allowed()) {
-                shambase::throw_with_loc<std::runtime_error>(
-                    "particle injection is not yet compatible with particle id tracking");
-            }
+            shamrock::experimental_feature_check(
+                "particle injection is not yet compatible with particle id tracking");
         }
 
         if (track_particles_id) {
-            if (!shamrock::are_experimental_features_allowed()) {
-                shambase::throw_with_loc<std::runtime_error>("Particle tracking is experimental");
-            }
+            shamrock::experimental_feature_check("Particle tracking is experimental");
         }
 
         if (!self_grav_config.is_none()) {
-            if (!shamrock::are_experimental_features_allowed()) {
-                shambase::throw_with_loc<std::runtime_error>(
-                    "Self gravity is experimental, please enable experimental features to use it");
-            }
+            shamrock::experimental_feature_check(
+                "Self gravity is experimental, please enable experimental features to use it");
+        }
+
+        if (mhd_config.do_nimhd()) {
+            shamrock::experimental_feature_check(
+                "Non-ideal MHD is experimental, please enable experimental features to use it");
         }
     }
 
@@ -937,32 +1258,6 @@ namespace shammodels::sph {
             ON_RANK_0(shamlog_warn_ln(
                 "SPHConfig", "eta_sink not found when deserializing, defaulting to", p.eta_sink));
         }
-    }
-
-    /**
-     * @brief Converts a SolverStatusVar object to a JSON object.
-     *
-     * @param j The JSON object to be populated.
-     * @param p The SolverStatusVar object to be converted.
-     */
-    template<class Tvec>
-    inline void to_json(nlohmann::json &j, const SolverStatusVar<Tvec> &p) {
-        j = nlohmann::json{
-            {"time", p.time}, {"dt_sph", p.dt_sph}, {"cfl_multiplier", p.cfl_multiplier}};
-    }
-
-    /**
-     * @brief Deserializes a SolverStatusVar object from a JSON object.
-     *
-     * @param j The JSON object to deserialize from.
-     * @param p The SolverStatusVar object to populate.
-     */
-    template<class Tvec>
-    inline void from_json(const nlohmann::json &j, SolverStatusVar<Tvec> &p) {
-        using Tscal = typename SolverStatusVar<Tvec>::Tscal;
-        j.at("time").get_to<Tscal>(p.time);
-        j.at("dt_sph").get_to<Tscal>(p.dt_sph);
-        j.at("cfl_multiplier").get_to<Tscal>(p.cfl_multiplier);
     }
 
     // JSON serialization for ParticleKillingConfig
@@ -1010,6 +1305,12 @@ namespace shammodels::sph {
                 {"type", "density_based_neigh_lim"},
                 {"max_neigh_count", conf->max_neigh_count},
             };
+        } else if (
+            const SmoothingLengthConfig::DensityBasedBisectingNR *conf
+            = std::get_if<SmoothingLengthConfig::DensityBasedBisectingNR>(&p.config)) {
+            j = {
+                {"type", "density_based_bisecting_nr"},
+            };
         } else {
             shambase::throw_unimplemented();
         }
@@ -1021,6 +1322,8 @@ namespace shammodels::sph {
         } else if (j.at("type").get<std::string>() == "density_based_neigh_lim") {
             p.config
                 = SmoothingLengthConfig::DensityBasedNeighLim{j.at("max_neigh_count").get<u32>()};
+        } else if (j.at("type").get<std::string>() == "density_based_bisecting_nr") {
+            p.config = SmoothingLengthConfig::DensityBasedBisectingNR{};
         } else {
             shambase::throw_unimplemented();
         }
@@ -1076,20 +1379,20 @@ namespace shammodels::sph {
     inline void from_json(const nlohmann::json &j, SelfGravConfig &p) {
         if (j.at("type").get<std::string>() == "sfmm") {
             p.config = SelfGravConfig::SFMM{
-                j.at("order").get<u32>(),
-                j.at("opening_angle").get<f64>(),
-                j.at("leaf_lowering").get<bool>(),
-                j.at("reduction_level").get<u32>()};
+                .order           = j.at("order").get<u32>(),
+                .opening_angle   = j.at("opening_angle").get<f64>(),
+                .leaf_lowering   = j.at("leaf_lowering").get<bool>(),
+                .reduction_level = j.at("reduction_level").get<u32>()};
         } else if (j.at("type").get<std::string>() == "fmm") {
             p.config = SelfGravConfig::FMM{
-                j.at("order").get<u32>(),
-                j.at("opening_angle").get<f64>(),
-                j.at("reduction_level").get<u32>()};
+                .order           = j.at("order").get<u32>(),
+                .opening_angle   = j.at("opening_angle").get<f64>(),
+                .reduction_level = j.at("reduction_level").get<u32>()};
         } else if (j.at("type").get<std::string>() == "mm") {
             p.config = SelfGravConfig::MM{
-                j.at("order").get<u32>(),
-                j.at("opening_angle").get<f64>(),
-                j.at("reduction_level").get<u32>()};
+                .order           = j.at("order").get<u32>(),
+                .opening_angle   = j.at("opening_angle").get<f64>(),
+                .reduction_level = j.at("reduction_level").get<u32>()};
         } else if (j.at("type").get<std::string>() == "direct") {
             p.config = SelfGravConfig::Direct{j.at("reference_mode").get<bool>()};
         } else if (j.at("type").get<std::string>() == "none") {
@@ -1109,6 +1412,27 @@ namespace shammodels::sph {
                     "Invalid softening mode: " + softening_mode);
             }
         }
+    }
+
+    // JSON serialization for DustConfig
+    template<class Tvec>
+    inline void to_json(nlohmann::json &j, const DustConfig<Tvec> &p) {
+        j = {};
+
+        p.mode_to_json(j["mode"]);
+        p.drag_mode_to_json(j["drag_mode"]);
+        p.evol_mode_to_json(j["evol_mode"]);
+        j["ballabio_ts_limiter"] = p.ballabio_ts_limiter;
+    }
+
+    template<class Tvec>
+    inline void from_json(const nlohmann::json &j, DustConfig<Tvec> &p) {
+        p.mode_from_json(j.at("mode"));
+        p.drag_mode_from_json(j.at("drag_mode"));
+        if (j.contains("evol_mode")) {
+            p.evol_mode_from_json(j.at("evol_mode"));
+        }
+        p.ballabio_ts_limiter = j.value("ballabio_ts_limiter", false);
     }
 
     /**
@@ -1135,14 +1459,16 @@ namespace shammodels::sph {
             {"gpart_mass", p.gpart_mass},
             {"cfl_config", p.cfl_config},
             {"unit_sys", p.unit_sys},
-            {"time_state", p.time_state},
+            {"show_cfl_detail", p.show_cfl_detail},
             // mhd config
             {"mhd_config", p.mhd_config},
+            // dust config
+            {"dust_config", p.dust_config},
             // self gravity config
             {"self_grav_config", p.self_grav_config},
             // tree config
             {"tree_reduction_level", p.tree_reduction_level},
-            {"use_two_stage_search", p.use_two_stage_search},
+            {shammodels::neigh_cache_strategy_json_key, p.neigh_cache_strategy},
             {"show_neigh_stats", p.show_neigh_stats},
             // solver behavior config
             {"combined_dtdiv_divcurlv_compute", p.combined_dtdiv_divcurlv_compute},
@@ -1226,11 +1552,14 @@ namespace shammodels::sph {
         _get_to_if_contains("gpart_mass", p.gpart_mass);
         _get_to_if_contains("cfl_config", p.cfl_config);
         _get_to_if_contains("unit_sys", p.unit_sys);
-        _get_to_if_contains("time_state", p.time_state);
+        _get_to_if_contains("show_cfl_detail", p.show_cfl_detail);
         _get_to_if_contains("mhd_config", p.mhd_config);
+        _get_to_if_contains("dust_config", p.dust_config);
         _get_to_if_contains("self_grav_config", p.self_grav_config);
         _get_to_if_contains("tree_reduction_level", p.tree_reduction_level);
-        _get_to_if_contains("use_two_stage_search", p.use_two_stage_search);
+        // Reads the new enum key, falling back on the legacy `use_two_stage_search` boolean
+        shammodels::get_to_neigh_cache_strategy(
+            j, p.neigh_cache_strategy, "SPH::SolverConfig", has_used_defaults, has_updated_config);
         _get_to_if_contains("show_neigh_stats", p.show_neigh_stats);
         _get_to_if_contains("combined_dtdiv_divcurlv_compute", p.combined_dtdiv_divcurlv_compute);
 

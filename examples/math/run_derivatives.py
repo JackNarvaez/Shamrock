@@ -13,6 +13,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 from shamrock.math import *
 
+import shamrock
+
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+
 # %%
 # Compute the error associated to a derivative function
 
@@ -55,7 +62,7 @@ def analysis(f, df, x0, label):
 
 
 # %%
-# Exemple of analysis
+# Example of analysis
 
 
 def f1(x):

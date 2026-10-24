@@ -87,13 +87,13 @@ namespace sham::benchmarks {
         y.fill(init_y);
 
         if (x.get_size() < N) {
-            shambase::make_except_with_loc<std::runtime_error>(shambase::format(
-                "x.get_size() < N\n  x.get_size() = {},\n  N = {}", x.get_size(), N));
+            shambase::make_except_with_loc<std::runtime_error>(
+                sham::format("x.get_size() < N\n  x.get_size() = {},\n  N = {}", x.get_size(), N));
         }
 
         if (y.get_size() < N) {
-            shambase::make_except_with_loc<std::runtime_error>(shambase::format(
-                "y.get_size() < N\n  y.get_size() = {},\n  N = {}", y.get_size(), N));
+            shambase::make_except_with_loc<std::runtime_error>(
+                sham::format("y.get_size() < N\n  y.get_size() = {},\n  N = {}", y.get_size(), N));
         }
 
         std::vector<T> y_res = {};
@@ -118,12 +118,12 @@ namespace sham::benchmarks {
                 });
             });
             e.wait();
-            t.end();
+            t.stop();
 
             x.complete_event_state(sycl::event{});
             y.complete_event_state(sycl::event{});
 
-            seconds = sham::min(seconds, t.elasped_sec());
+            seconds = sham::min(seconds, t.elapsed_sec());
 
             if (i == 0) {
                 y_res = y.copy_to_stdvec();
@@ -155,10 +155,10 @@ namespace sham::benchmarks {
         }
 
         return {
-            SourceLocation{}.loc.function_name(),
-            seconds,
-            double(N) * load_size * 3 / seconds / 1e9,
-            u64(N) * u64(load_size) * 2_u64};
+            .func_name = SourceLocation{}.loc.function_name(),
+            .seconds   = seconds,
+            .bandwidth = double(N) * load_size * 3 / seconds / 1e9,
+            .byte_used = u64(N) * u64(load_size) * 2_u64};
     }
 
 } // namespace sham::benchmarks

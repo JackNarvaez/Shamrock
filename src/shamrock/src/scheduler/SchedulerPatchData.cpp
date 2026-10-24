@@ -130,10 +130,10 @@ namespace shamrock::scheduler {
 
                 send_payloads.push_back(
                     Message{
-                        std::make_unique<shamcomm::CommunicationBuffer>(
+                        .buf = std::make_unique<shamcomm::CommunicationBuffer>(
                             std::move(tmp), shamsys::instance::get_compute_scheduler_ptr()),
-                        op.rank_owner_new,
-                        op.tag_comm});
+                        .rank = op.rank_owner_new,
+                        .tag  = op.tag_comm});
             }
         }
 
@@ -148,9 +148,9 @@ namespace shamrock::scheduler {
             if (op.rank_owner_new == shamcomm::world_rank()) {
                 recv_payloads.push_back(
                     Message{
-                        std::unique_ptr<shamcomm::CommunicationBuffer>{},
-                        op.rank_owner_old,
-                        op.tag_comm});
+                        .buf  = std::unique_ptr<shamcomm::CommunicationBuffer>{},
+                        .rank = op.rank_owner_old,
+                        .tag  = op.tag_comm});
             }
         }
 
@@ -369,36 +369,36 @@ namespace shamrock::scheduler {
         auto search7 = owned_data.find(old_keys[7]);
 
         if (search0 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[0]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[0]));
         }
         if (search1 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[1]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[1]));
         }
         if (search2 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[2]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[2]));
         }
         if (search3 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[3]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[3]));
         }
         if (search4 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[4]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[4]));
         }
         if (search5 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[5]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[5]));
         }
         if (search6 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[6]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[6]));
         }
         if (search7 == owned_data.not_found()) {
-            throw shambase::make_except_with_loc<std::runtime_error>(shambase::format_printf(
-                "patchdata for key=%d was not owned by the node", old_keys[7]));
+            throw shambase::make_except_with_loc<std::runtime_error>(
+                sham::format_printf("patchdata for key=%d was not owned by the node", old_keys[7]));
         }
 
         shamrock::patch::PatchDataLayer new_pdat(pdl_ptr);

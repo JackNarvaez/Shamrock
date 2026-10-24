@@ -2,7 +2,7 @@
 Test the precision of SG methods in SPH
 ============================
 
-Test that all methodes give expected deviantion compare to the reference mode
+Test that all methods give expected deviation compare to the reference mode
 """
 
 import matplotlib.pyplot as plt
@@ -471,7 +471,7 @@ def setup_cube_hcp(model, cfg):
     init_part_bmax = (sphere_radius, sphere_radius, sphere_radius)
 
     scheduler_split_val = int(2e7)
-    scheduler_merge_val = int(1)
+    scheduler_merge_val = 1
 
     N_target = Npart
     xm, ym, zm = init_part_bmin

@@ -18,6 +18,8 @@
 #include "shambase/memory.hpp"
 #include "shambase/stacktrace.hpp"
 #include "shambase/string.hpp"
+#include "sham/term/tty.hpp"
+#include "shamalgs/collective/gather_str.hpp"
 #include "shamalgs/collective/reduction.hpp"
 #include "shambackends/Device.hpp"
 #include "shambackends/DeviceScheduler.hpp"
@@ -28,8 +30,6 @@
 #include "shambackends/typeAliasVec.hpp"
 #include "shamcmdopt/cmdopt.hpp"
 #include "shamcmdopt/env.hpp"
-#include "shamcmdopt/tty.hpp"
-#include "shamcomm/collectives.hpp"
 #include "shamcomm/local_rank.hpp"
 #include "shamcomm/logs.hpp"
 #include "shamcomm/mpi.hpp"
@@ -63,7 +63,7 @@ namespace shamsys::instance::details {
             std::string platname = shambase::trunc_str(PlatformName, 24);
             std::string devtype  = shambase::trunc_str(shambase::getDevice_type(dev), 6);
 
-            print_buf += shambase::format(
+            print_buf += sham::format(
                              "| {:>4} | {:>2} | {:>29.29} | {:>24.24} | {:>6} |",
                              rank,
                              key_global,
@@ -74,7 +74,7 @@ namespace shamsys::instance::details {
         });
 
         std::string recv;
-        shamcomm::gather_str(print_buf, recv);
+        shamalgs::collective::gather_str(print_buf, recv);
 
         if (rank == 0) {
             std::string print = "Cluster SYCL Info : \n";
@@ -173,14 +173,14 @@ namespace shamsys::instance {
 
         std::optional<u32> loc = shamcomm::node_local_rank();
         if (loc) {
-            print_buf = shambase::format(
+            print_buf = sham::format(
                 "| {:>4} | {:>8} | {:>12} | {:>16} |\n",
                 rank,
                 *loc,
                 shambase::get_check_ref(syclinit::device_alt).device_id,
                 shambase::get_check_ref(syclinit::device_compute).device_id);
         } else {
-            print_buf = shambase::format(
+            print_buf = sham::format(
                 "| {:>4} | {:>8} | {:>12} | {:>16} |\n",
                 rank,
                 "???",
@@ -189,7 +189,7 @@ namespace shamsys::instance {
         }
 
         std::string recv;
-        shamcomm::gather_str(print_buf, recv);
+        shamalgs::collective::gather_str(print_buf, recv);
 
         if (rank == 0) {
             std::string print = "Queue map : \n";
@@ -271,7 +271,7 @@ namespace shamsys::instance {
 
         shamlog_debug_ln(
             "Sys",
-            shambase::format(
+            sham::format(
                 "[{:03}]: \x1B[32mMPI_Init : node n {:03} | world size : {} | name = {}\033[0m",
                 shamcomm::world_rank(),
                 shamcomm::world_rank(),
@@ -297,6 +297,17 @@ namespace shamsys::instance {
         "syclfirst",
         "Select the MPI init strategy (mpifirst, syclfirst) [default: syclfirst]");
 
+    namespace {
+        /// Closes the instance on destruction if nothing closed it before
+        struct InstanceCloser {
+            ~InstanceCloser() {
+                if (syclinit::initialized) {
+                    syclinit::finalize();
+                }
+            }
+        };
+    } // namespace
+
     void init_sycl_mpi(std::string search_key, MPIInitInfo mpi_info) {
 
         if (init_strategy == "syclfirst") {
@@ -311,6 +322,10 @@ namespace shamsys::instance {
 
         shambase::get_check_ref(syclinit::device_compute).update_mpi_prop();
         shambase::get_check_ref(syclinit::device_alt).update_mpi_prop();
+
+        // Registered for static teardown once the queues exist, so it runs before the
+        // statics the SYCL runtime set up while creating them
+        static InstanceCloser closer;
     }
 
     void init(int argc, char *argv[]) {
@@ -331,7 +346,7 @@ namespace shamsys::instance {
 
             // shamlog_debug_ln("NodeInstance", "chosen sycl config :",sycl_cfg);
 
-            init_sycl_mpi(sycl_cfg, {argc, argv, forced_state});
+            init_sycl_mpi(sycl_cfg, {.argc = argc, .argv = argv, .forced_state = forced_state});
 
         } else {
 
@@ -410,18 +425,17 @@ namespace shamsys::instance {
         if (shamcomm::world_rank() == 0) {
             if (num_dgpu_use == shamcomm::world_size()) {
                 logger::raw_ln(
-                    shambase::format(
-                        " - MPI use Direct Comm : {}", col8b_green() + "Yes" + reset()));
+                    sham::format(" - MPI use Direct Comm : {}", col8b_green() + "Yes" + reset()));
             } else if (num_dgpu_use > 0) {
                 logger::raw_ln(
-                    shambase::format(
+                    sham::format(
                         " - MPI use Direct Comm : {} ({} of {})",
                         col8b_yellow() + "Partial" + reset(),
                         num_dgpu_use,
                         shamcomm::world_size()));
             } else {
                 logger::raw_ln(
-                    shambase::format(" - MPI use Direct Comm : {}", col8b_red() + "No" + reset()));
+                    sham::format(" - MPI use Direct Comm : {}", col8b_red() + "No" + reset()));
             }
         }
     }

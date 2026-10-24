@@ -10,6 +10,7 @@ with the number of processes. Run it only if you have enough memory available.
 from statistics import mean, stdev
 
 import shamrock
+from shamrock import NeighCacheStrategy
 
 result_text = ""
 
@@ -26,7 +27,7 @@ for N_target_base in [32e6]:
     compute_multiplier = shamrock.sys.world_size()
     # compute_multiplier = 12
     scheduler_split_val = int(2e7)
-    scheduler_merge_val = int(1)
+    scheduler_merge_val = 1
 
     N_target = N_target_base * compute_multiplier
     xm, ym, zm = bmin
@@ -61,21 +62,23 @@ for N_target_base in [32e6]:
     cfg.set_artif_viscosity_VaryingCD10(
         alpha_min=0.0, alpha_max=1, sigma_decay=0.1, alpha_u=1, beta_AV=2
     )
+    cfg.set_neigh_cache_strategy(NeighCacheStrategy.TwoStageSharedOffload)
     cfg.set_boundary_periodic()
     cfg.set_eos_adiabatic(gamma)
-    cfg.set_max_neigh_cache_size(int(100e9))
     cfg.print_status()
     model.set_solver_config(cfg)
     model.init_scheduler(scheduler_split_val, scheduler_merge_val)
 
-    bmin, bmax = model.get_ideal_hcp_box(dr, bmin, bmax)
+    bmin, bmax = shamrock.math.get_ideal_hcp_box(dr, bmin, bmax)
     xm, ym, zm = bmin
     xM, yM, zM = bmax
 
     model.resize_simulation_box(bmin, bmax)
 
     setup = model.get_setup()
-    gen = setup.make_generator_lattice_hcp(dr, bmin, bmax)
+    gen = setup.make_generator_lattice_hcp(
+        dr, bmin, bmax, discontinuous=False, init_h_factor=2.1402
+    )
 
     # Kind of optimized for Aurora
     setup.apply_setup(
@@ -86,6 +89,7 @@ for N_target_base in [32e6]:
         rank_comm_size_limit=int(scheduler_split_val) * 2,
         max_msg_size=int(scheduler_split_val / 8),
         do_setup_log=False,
+        speculative_balancing=True,
     )
 
     xc, yc, zc = model.get_closest_part_to((0, 0, 0))
@@ -102,7 +106,7 @@ for N_target_base in [32e6]:
 
     model.set_value_in_a_box("uint", "f64", 0, bmin, bmax)
 
-    rinj = 8 * dr
+    rinj = 16 * dr
     u_inj = 1
     model.add_kernel_value("uint", "f64", u_inj, (0, 0, 0), rinj)
 
@@ -116,9 +120,6 @@ for N_target_base in [32e6]:
     model.set_cfl_cour(0.1)
     model.set_cfl_force(0.1)
 
-    model.set_cfl_multipler(1e-4)
-    model.set_cfl_mult_stiffness(1e6)
-
     shamrock.backends.reset_mem_info_max()
 
     # converge smoothing length and compute initial dt
@@ -128,10 +129,39 @@ for N_target_base in [32e6]:
     res_rates = []
     res_cnts = []
     res_system_metrics = []
+    res_mpi_timers = []
 
-    for i in range(5):
+    """
+    Here we insert callbacks to measure solver MPI usage by fetching the timers twice at the begining and end of the step
+    """
+    before_mpi_timers, after_mpi_timers = None, None
+
+    def callback_before_mpi_timer():
+        global before_mpi_timers
+        # print(shamrock.sys.world_rank(), "register before_mpi_timers")
+        before_mpi_timers = shamrock.comm.get_timers()
+
+    def callback_after_mpi_timer():
+        global after_mpi_timers
+        # print(shamrock.sys.world_rank(), "register after_mpi_timers")
+        after_mpi_timers = shamrock.comm.get_timers()
+
+    model.add_timestep_callback(
+        step_begin=callback_before_mpi_timer, step_end=callback_after_mpi_timer
+    )
+
+    for i in range(10):
+        if shamrock.sys.world_rank() == 0:
+            print("running step ", i + 1, "/", 10, " ...")
+
         shamrock.sys.mpi_barrier()
+
+        # To replay the same step
+        model.set_next_dt(0.0)
         model.timestep()
+
+        if shamrock.sys.world_rank() == 0:
+            print("collecting results ...")
 
         tmp_res_rate, tmp_res_cnt, tmp_system_metrics = (
             model.solver_logs_last_rate(),
@@ -141,6 +171,17 @@ for N_target_base in [32e6]:
         res_rates.append(tmp_res_rate)
         res_cnts.append(tmp_res_cnt)
         res_system_metrics.append(tmp_system_metrics)
+        res_mpi_timers.append(shamrock.comm.mpi_timers_delta(before_mpi_timers, after_mpi_timers))
+
+        if shamrock.sys.world_rank() == 0:
+            print("sleeping 1 second ...")
+
+        import time
+
+        time.sleep(1)
+
+        if shamrock.sys.world_rank() == 0:
+            print("done sleeping 1 second ...")
 
     # result is the best rate of the 5 steps
     res_rate, res_cnt = max(res_rates), res_cnts[0]
@@ -148,7 +189,7 @@ for N_target_base in [32e6]:
     # index of the max rate
     max_rate_index = res_rates.index(max(res_rates))
     max_rate_system_metrics = res_system_metrics[max_rate_index]
-
+    max_mpi_timers = res_mpi_timers[max_rate_index]
     step_time = res_cnt / res_rate
 
     if shamrock.sys.world_rank() == 0:
@@ -168,6 +209,7 @@ for N_target_base in [32e6]:
             "rate": res_rate,
             "cnt": res_cnt,
             "step_time": step_time,
+            "mpi_timers": max_mpi_timers,
         }
 
         # print the system metrics

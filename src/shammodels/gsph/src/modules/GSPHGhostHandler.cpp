@@ -15,7 +15,7 @@
  */
 
 #include "shambase/exception.hpp"
-#include "shamcomm/collectives.hpp"
+#include "shamalgs/collective/gather_str.hpp"
 #include "shammodels/gsph/modules/GSPHGhostHandler.hpp"
 #include <functional>
 #include <vector>
@@ -62,9 +62,9 @@ inline void for_each_patch_shift(
 
     std::vector<i32_3> list_possible;
 
-    i32 repetition_x = 1 + abs(shearinfo.shear_dir.x());
-    i32 repetition_y = 1 + abs(shearinfo.shear_dir.y());
-    i32 repetition_z = 1 + abs(shearinfo.shear_dir.z());
+    i32 repetition_x = 1 + sham::abs(shearinfo.shear_dir.x());
+    i32 repetition_y = 1 + sham::abs(shearinfo.shear_dir.y());
+    i32 repetition_z = 1 + sham::abs(shearinfo.shear_dir.z());
 
     T sz = bsize.x() * shearinfo.shear_dir.x() + bsize.y() * shearinfo.shear_dir.y()
            + bsize.z() * shearinfo.shear_dir.z();
@@ -344,13 +344,12 @@ auto GSPHGhostHandler<vec>::gen_id_table_interfaces(GeneratorMap &&gen)
 
     for (auto &[k, v] : send_count_stats) {
         if (v > 0.2) {
-            warn_log += shambase::format("\n    patch {} high interf/patch volume: {}", k, v);
             has_warn = true;
         }
     }
 
     if (has_warn && shamcomm::world_rank() == 0) {
-        warn_log = "\n    This can lead to high mpi "
+        warn_log = "\n    High interf/patch volume. This can lead to high mpi "
                    "overhead, try to increase the patch split crit"
                    + warn_log;
     }
@@ -371,24 +370,24 @@ void GSPHGhostHandler<vec>::gen_debug_patch_ghost(
 
     std::string loc_graph = "";
     interf_info.for_each([&loc_graph](u64 send, u64 recv, InterfaceIdTable &info) {
-        loc_graph += shambase::format("    p{} -> p{}\n", send, recv);
+        loc_graph += sham::format("    p{} -> p{}\n", send, recv);
     });
 
     sched.for_each_patch_data(
         [&](u64 id, shamrock::patch::Patch p, shamrock::patch::PatchDataLayer &pdat) {
             if (pdat.get_obj_cnt() > 0) {
-                loc_graph += shambase::format(
+                loc_graph += sham::format(
                     "    p{} [label= \"id={} N={}\"]\n", id, id, pdat.get_obj_cnt());
             }
         });
 
     std::string dot_graph = "";
-    shamcomm::gather_str(loc_graph, dot_graph);
+    shamalgs::collective::gather_str(loc_graph, dot_graph);
 
     dot_graph = "strict digraph {\n" + dot_graph + "}";
 
     if (shamcomm::world_rank() == 0) {
-        std::string fname = shambase::format("ghost_graph_{}.dot", cnt_dump_debug);
+        std::string fname = sham::format("ghost_graph_{}.dot", cnt_dump_debug);
         logger::info_ln("GSPH Ghost", "writing", fname);
         shambase::write_string_to_file(fname, dot_graph);
         cnt_dump_debug++;

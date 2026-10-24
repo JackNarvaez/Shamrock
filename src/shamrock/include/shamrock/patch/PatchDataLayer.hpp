@@ -41,6 +41,32 @@ namespace shamrock::patch {
         std::vector<var_t> fields;
         std::shared_ptr<PatchDataLayerLayout> pdl_ptr;
 
+        inline var_t &get_field_variant(u32 idx) {
+            if (idx >= fields.size()) {
+                throw shambase::make_except_with_loc<std::runtime_error>(
+                    "the requested field index is out of bounds\n"
+                    "   current map is : \n"
+                    + pdl().get_description_str()
+                    + "\n"
+                      "    arg : idx = "
+                    + std::to_string(idx));
+            }
+            return fields[idx];
+        }
+
+        inline const var_t &get_field_variant(u32 idx) const {
+            if (idx >= fields.size()) {
+                throw shambase::make_except_with_loc<std::runtime_error>(
+                    "the requested field index is out of bounds\n"
+                    "   current map is : \n"
+                    + pdl().get_description_str()
+                    + "\n"
+                      "    arg : idx = "
+                    + std::to_string(idx));
+            }
+            return fields[idx];
+        }
+
         public:
         using field_variant_t = var_t;
 
@@ -53,19 +79,15 @@ namespace shamrock::patch {
             init_fields();
         }
 
-        inline PatchDataLayer(const PatchDataLayer &other) : pdl_ptr(other.get_layout_ptr()) {
-
-            NamedStackEntry stack_loc{"PatchDataLayer::copy_constructor", true};
-
-            for (auto &field_var : other.fields) {
-
-                field_var.visit([&](auto &field) {
-                    using base_t =
-                        typename std::remove_reference<decltype(field)>::type::Field_type;
-                    fields.emplace_back(PatchDataField<base_t>(field));
-                });
-            };
-        }
+        /**
+         * @brief PatchDataLayer copy constructor
+         *
+         * Defined out of line: visiting every FieldVariant alternative instantiates the copy
+         * of all PatchDataField types, which is costly to compile in every includer.
+         *
+         * @param other
+         */
+        PatchDataLayer(const PatchDataLayer &other);
 
         /**
          * @brief PatchDataLayer move constructor
@@ -208,48 +230,30 @@ namespace shamrock::patch {
         void append_subset_to(
             const sham::DeviceBuffer<u32> &idxs_buf, u32 sz, PatchDataLayer &pdat) const;
 
-        inline u32 get_obj_cnt() const {
+        /**
+         * @brief get the number of objects (particles) stored in this layer
+         *
+         * @return u32 the object count
+         */
+        u32 get_obj_cnt() const;
 
-            bool is_empty = fields.empty();
-
-            if (!is_empty) {
-                return fields[0].visit_return([](const auto &field) {
-                    return field.get_obj_cnt();
-                });
-            }
-
-            throw shambase::make_except_with_loc<std::runtime_error>(
-                "this PatchDataLayer does not contain any fields");
-        }
-
-        inline u64 memsize() {
-            u64 sum = 0;
-
-            for (auto &field_var : fields) {
-
-                field_var.visit([&](auto &field) {
-                    sum += field.memsize();
-                });
-            }
-
-            return sum;
-        }
+        /**
+         * @brief get the memory size in bytes used by all fields
+         *
+         * @return u64 the memory size in bytes
+         */
+        u64 memsize();
 
         inline bool is_empty() { return get_obj_cnt() == 0; }
 
-        void synchronize_buf() {
-            for (auto &field_var : fields) {
-                field_var.visit([&](auto &field) {
-                    field.synchronize_buf();
-                });
-            }
-        }
+        /// synchronize the host/device buffers of all fields
+        void synchronize_buf();
 
         void overwrite(PatchDataLayer &pdat, u32 obj_cnt);
 
         template<class T>
         bool check_field_type(u32 idx) {
-            var_t &tmp = fields.at(idx);
+            var_t &tmp = get_field_variant(idx);
 
             PatchDataField<T> *pval = std::get_if<PatchDataField<T>>(&tmp.value);
 
@@ -263,7 +267,7 @@ namespace shamrock::patch {
         template<class T>
         PatchDataField<T> &get_field(u32 idx) {
 
-            var_t &tmp = fields.at(idx);
+            var_t &tmp = get_field_variant(idx);
 
             PatchDataField<T> *pval = std::get_if<PatchDataField<T>>(&tmp.value);
 
@@ -283,7 +287,7 @@ namespace shamrock::patch {
         template<class T>
         const PatchDataField<T> &get_field(u32 idx) const {
 
-            const var_t &tmp = fields.at(idx);
+            const var_t &tmp = get_field_variant(idx);
 
             const PatchDataField<T> *pval = std::get_if<PatchDataField<T>>(&tmp.value);
 
@@ -313,7 +317,7 @@ namespace shamrock::patch {
         template<class T>
         sham::DeviceBuffer<T> &get_field_buf_ref(u32 idx) {
 
-            var_t &tmp = fields.at(idx);
+            var_t &tmp = get_field_variant(idx);
 
             PatchDataField<T> *pval = std::get_if<PatchDataField<T>>(&tmp.value);
 
@@ -363,17 +367,7 @@ namespace shamrock::patch {
          * @brief check that all contained field have the same obj cnt
          *
          */
-        inline void check_field_obj_cnt_match() {
-            u32 cnt = get_obj_cnt();
-            for (auto &field_var : fields) {
-                field_var.visit([&](auto &field) {
-                    if (field.get_obj_cnt() != cnt) {
-                        throw shambase::make_except_with_loc<std::runtime_error>(
-                            "mismatch in obj cnt");
-                    }
-                });
-            }
-        }
+        void check_field_obj_cnt_match();
 
         // template<class T> inline std::vector<PatchDataField<T> & > get_field_list(){
         //     std::vector<PatchDataField<T> & > ret;
@@ -392,34 +386,8 @@ namespace shamrock::patch {
             }
         }
 
-        inline friend bool operator==(PatchDataLayer &p1, PatchDataLayer &p2) {
-            bool check = true;
-
-            if (p1.fields.size() != p2.fields.size()) {
-                return false;
-            }
-
-            for (u32 idx = 0; idx < p1.fields.size(); idx++) {
-
-                bool ret = std::visit(
-                    [&](auto &pf1, auto &pf2) -> bool {
-                        using t1 = typename std::remove_reference<decltype(pf1)>::type::Field_type;
-                        using t2 = typename std::remove_reference<decltype(pf2)>::type::Field_type;
-
-                        if constexpr (std::is_same<t1, t2>::value) {
-                            return pf1.check_field_match(pf2);
-                        } else {
-                            return false;
-                        }
-                    },
-                    p1.fields[idx].value,
-                    p2.fields[idx].value);
-
-                check = check && ret;
-            }
-
-            return check;
-        }
+        /// Compare two layers field by field (defined in PatchDataLayer.cpp)
+        friend bool operator==(PatchDataLayer &p1, PatchDataLayer &p2);
 
         void serialize_buf(shamalgs::SerializeHelper &serializer);
 
@@ -431,48 +399,26 @@ namespace shamrock::patch {
 
         void fields_raz();
 
-        bool has_nan() {
-            StackEntry stack_loc{};
+        /**
+         * @brief check whether any field contains a NaN value
+         *
+         * @return bool true if a NaN was found
+         */
+        bool has_nan();
 
-            bool ret = false;
+        /**
+         * @brief check whether any field contains an infinite value
+         *
+         * @return bool true if an infinite value was found
+         */
+        bool has_inf();
 
-            for (auto &field_var : fields) {
-                field_var.visit([&](auto &field) {
-                    if (field.has_nan()) {
-                        ret = true;
-                    }
-                });
-            }
-            return ret;
-        }
-        bool has_inf() {
-            StackEntry stack_loc{};
-
-            bool ret = false;
-
-            for (auto &field_var : fields) {
-                field_var.visit([&](auto &field) {
-                    if (field.has_inf()) {
-                        ret = true;
-                    }
-                });
-            }
-            return ret;
-        }
-        bool has_nan_or_inf() {
-            StackEntry stack_loc{};
-
-            bool ret = false;
-
-            for (auto &field_var : fields) {
-                field_var.visit([&](auto &field) {
-                    if (field.has_nan_or_inf()) {
-                        ret = true;
-                    }
-                });
-            }
-            return ret;
-        }
+        /**
+         * @brief check whether any field contains a NaN or infinite value
+         *
+         * @return bool true if a NaN or infinite value was found
+         */
+        bool has_nan_or_inf();
 
         /**
          * @brief
@@ -486,8 +432,7 @@ namespace shamrock::patch {
         void override_patch_field(std::string field_name, std::vector<T> &vec) {
             u32 len              = vec.size();
             PatchDataField<T> &f = get_field<T>(pdl().get_field_idx<T>(field_name));
-            sycl::buffer<T> buf(vec.data(), len);
-            f.override(buf, len);
+            f.override(vec, len);
         }
 
         /**
@@ -529,6 +474,11 @@ namespace shamrock::patch {
         }
     };
 
+    /**
+     * @brief Compare two PatchDataLayer objects field by field
+     */
+    bool operator==(PatchDataLayer &p1, PatchDataLayer &p2);
+
     template<class T>
     inline void PatchDataLayer::insert_elements_in_range(PatchDataLayer &pdat, T bmin, T bmax) {
 
@@ -558,20 +508,6 @@ namespace shamrock::patch {
                 vmin,
                 vmax);
         };
-
-        // auto get_vec_idx = [&](T vmin, T vmax) -> std::vector<u32> {
-        //     return main_field.get_elements_with_range(
-        //         [&](T val, T vmin, T vmax) {
-        //             if (shambase::VectorProperties<T>::dimension == 3) {
-        //                 return shammath::is_in_half_open(val, vmin, vmax);
-        //             } else {
-        //                 throw shambase::make_except_with_loc<std::runtime_error>(
-        //                     "dimension != 3 is not handled");
-        //             }
-        //         },
-        //         vmin,
-        //         vmax);
-        // };
 
         std::vector<u32> idx_lst = get_vec_idx(bmin, bmax);
 

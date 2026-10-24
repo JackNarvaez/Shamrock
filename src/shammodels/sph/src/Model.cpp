@@ -20,6 +20,7 @@
 #include "shambase/memory.hpp"
 #include "shambase/stacktrace.hpp"
 #include "shambase/string.hpp"
+#include "shambackends/type_traits.hpp"
 #include "shamcomm/logs.hpp"
 #include "shammath/crystalLattice.hpp"
 #include "shammath/sphkernels.hpp"
@@ -29,6 +30,7 @@
 #include "shammodels/sph/io/Phantom2Shamrock.hpp"
 #include "shammodels/sph/io/PhantomDump.hpp"
 #include "shammodels/sph/modules/ParticleReordering.hpp"
+#include "shammodels/sph/sink_edges_helper.hpp"
 #include "shamrock/patch/PatchDataLayer.hpp"
 #include "shamrock/scheduler/DataInserterUtility.hpp"
 #include "shamrock/scheduler/PatchScheduler.hpp"
@@ -79,8 +81,17 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init() {
     });
     solver.init_ghost_layout();
 
+    solver.ensure_time_state_edges();
+
+    ensure_sink_edges<Tvec>(sched.synchronized_data);
+
+    // must be bone after time state edges are ensured (it will connect to it)
     solver.init_solver_graph();
 }
+
+REGISTER_IDATAEDGESERIALIZABLE(shamrock::solvergraph::IDataEdgeSerializable<f64>);
+REGISTER_IDATAEDGESERIALIZABLE(shamrock::solvergraph::IDataEdgeSerializable<std::vector<f64>>);
+REGISTER_IDATAEDGESERIALIZABLE(shamrock::solvergraph::IDataEdgeSerializable<std::vector<f64_3>>);
 
 template<class Tvec, template<class> class SPHKernel>
 u64 shammodels::sph::Model<Tvec, SPHKernel>::get_total_part_count() {
@@ -143,14 +154,6 @@ auto shammodels::sph::Model<Tvec, SPHKernel>::get_closest_part_to(Tvec pos) -> T
 }
 
 template<class Tvec, template<class> class SPHKernel>
-auto shammodels::sph::Model<Tvec, SPHKernel>::get_ideal_fcc_box(Tscal dr, std::pair<Tvec, Tvec> box)
-    -> std::pair<Tvec, Tvec> {
-    StackEntry stack_loc{};
-    auto [a, b] = generic::setup::generators::get_ideal_fcc_box<Tscal>(dr, box);
-    return {a, b};
-}
-
-template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::Model<Tvec, SPHKernel>::remap_positions(std::function<Tvec(Tvec)> map) {
     StackEntry stack_loc{};
 
@@ -181,7 +184,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::remap_positions(std::function<Tvec
         shamrock::ReattributeDataUtility reatrib(sched);
         sptree.attach_buf();
         reatrib.reatribute_patch_objects(sptree, "xyz");
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
     }
 
     modules::ComputeLoadBalanceValue<Tvec, SPHKernel>(ctx, solver.solver_config, solver.storage)
@@ -196,7 +199,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::remap_positions(std::function<Tvec
         shamrock::ReattributeDataUtility reatrib(sched);
         sptree.attach_buf();
         reatrib.reatribute_patch_objects(sptree, "xyz");
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
     }
 }
 
@@ -222,7 +225,7 @@ inline void post_insert_data(PatchScheduler &sched) {
         shamrock::ReattributeDataUtility reatrib(sched);
         sptree.attach_buf();
         reatrib.reatribute_patch_objects(sptree, "xyz");
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
     }
 
     sched.scheduler_step(true, true);
@@ -235,7 +238,7 @@ inline void post_insert_data(PatchScheduler &sched) {
         shamrock::ReattributeDataUtility reatrib(sched);
         sptree.attach_buf();
         reatrib.reatribute_patch_objects(sptree, "xyz");
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
     }
 
     std::string log = "";
@@ -260,12 +263,12 @@ inline void post_insert_data(PatchScheduler &sched) {
     }
 
     // sched.for_each_local_patchdata([&](const Patch p, PatchData &pdat) {
-    //     log += shambase::format(
+    //     log += sham::format(
     //         "\n    patch id={}, N={} particles", p.id_patch, pdat.get_obj_cnt());
     // });
     //
     // std::string log_gathered = "";
-    // shamcomm::gather_str(log, log_gathered);
+    // shamalgs::collective::gather_str(log, log_gathered);
     //
     // if (shamcomm::world_rank() == 0)
     //     logger::info_ln("Model", "current particle counts : ", log_gathered);
@@ -306,7 +309,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::push_particle(
             return;
         }
 
-        log += shambase::format(
+        log += sham::format(
             "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
             shamcomm::world_rank(),
             p.id_patch,
@@ -322,32 +325,29 @@ void shammodels::sph::Model<Tvec, SPHKernel>::push_particle(
             u32 len = vec_acc.size();
             PatchDataField<Tvec> &f
                 = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("xyz"));
-            sycl::buffer<Tvec> buf(vec_acc.data(), len);
-            f.override(buf, len);
+            f.override(vec_acc, len);
         }
 
         {
             u32 len = vec_acc.size();
             PatchDataField<Tscal> &f
                 = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("hpart"));
-            sycl::buffer<Tscal> buf(hpart_acc.data(), len);
-            f.override(buf, len);
+            f.override(hpart_acc, len);
         }
 
         {
             u32 len = u_acc.size();
             PatchDataField<Tscal> &f
                 = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("uint"));
-            sycl::buffer<Tscal> buf(u_acc.data(), len);
-            f.override(buf, len);
+            f.override(u_acc, len);
         }
 
         pdat.insert_elements(tmp);
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         std::string log_gathered = "";
-        shamcomm::gather_str(log, log_gathered);
+        shamalgs::collective::gather_str(log, log_gathered);
 
         if (shamcomm::world_rank() == 0) {
             logger::info_ln("Model", "Push particles : ", log_gathered);
@@ -402,7 +402,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::push_particle_mhd(
             return;
         }
 
-        log += shambase::format(
+        log += sham::format(
             "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
             shamcomm::world_rank(),
             p.id_patch,
@@ -418,48 +418,43 @@ void shammodels::sph::Model<Tvec, SPHKernel>::push_particle_mhd(
             u32 len = vec_acc.size();
             PatchDataField<Tvec> &f
                 = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("xyz"));
-            sycl::buffer<Tvec> buf(vec_acc.data(), len);
-            f.override(buf, len);
+            f.override(vec_acc, len);
         }
 
         {
             u32 len = vec_acc.size();
             PatchDataField<Tscal> &f
                 = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("hpart"));
-            sycl::buffer<Tscal> buf(hpart_acc.data(), len);
-            f.override(buf, len);
+            f.override(hpart_acc, len);
         }
 
         {
             u32 len = u_acc.size();
             PatchDataField<Tscal> &f
                 = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("uint"));
-            sycl::buffer<Tscal> buf(u_acc.data(), len);
-            f.override(buf, len);
+            f.override(u_acc, len);
         }
 
         {
             u32 len = vec_acc.size();
             PatchDataField<Tvec> &f
                 = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("B/rho"));
-            sycl::buffer<Tvec> buf(B_on_rho_acc.data(), len);
-            f.override(buf, len);
+            f.override(B_on_rho_acc, len);
         }
 
         {
             u32 len = vec_acc.size();
             PatchDataField<Tscal> &f
                 = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("psi/ch"));
-            sycl::buffer<Tscal> buf(psi_on_ch_acc.data(), len);
-            f.override(buf, len);
+            f.override(psi_on_ch_acc, len);
         }
 
         pdat.insert_elements(tmp);
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         std::string log_gathered = "";
-        shamcomm::gather_str(log, log_gathered);
+        shamalgs::collective::gather_str(log, log_gathered);
 
         if (shamcomm::world_rank() == 0) {
             logger::info_ln("Model", "Push particles MHD : ", log_gathered);
@@ -471,24 +466,6 @@ void shammodels::sph::Model<Tvec, SPHKernel>::push_particle_mhd(
 
         post_insert_data<Tvec>(sched);
     });
-}
-
-template<class Tvec, template<class> class SPHKernel>
-auto shammodels::sph::Model<Tvec, SPHKernel>::get_ideal_hcp_box(
-    Tscal dr, std::pair<Tvec, Tvec> _box) -> std::pair<Tvec, Tvec> {
-    StackEntry stack_loc{};
-
-    using Lattice     = shammath::LatticeHCP<Tvec>;
-    using LatticeIter = typename shammath::LatticeHCP<Tvec>::Iterator;
-
-    shammath::CoordRange<Tvec> box = _box;
-    auto [idxs_min, idxs_max]      = Lattice::get_box_index_bounds(dr, box.lower, box.upper);
-
-    auto [idxs_min_per, idxs_max_per] = Lattice::nearest_periodic_box_indices(idxs_min, idxs_max);
-
-    shammath::CoordRange<Tvec> ret = Lattice::get_periodic_box(dr, idxs_min_per, idxs_max_per);
-
-    return {ret.lower, ret.upper};
 }
 
 template<class Tvec, template<class> class SPHKernel>
@@ -545,7 +522,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_hcp_3d(
                     return;
                 }
 
-                log += shambase::format(
+                log += sham::format(
                     "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
                     shamcomm::world_rank(),
                     p.id_patch,
@@ -589,11 +566,11 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_hcp_3d(
             }
         } while (!gen.is_done() && max_loc_sum_ins_cnt < sched.crit_patch_split * 8);
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         // if(logger::details::loglevel >= shamcomm::logs::log_info){
         //     std::string log_gathered = "";
-        //     shamcomm::gather_str(log, log_gathered);
+        //     shamalgs::collective::gather_str(log, log_gathered);
         //
         //     if (shamcomm::world_rank() == 0) {
         //         shamlog_debug_ln("Model", "Push particles : ", log_gathered);
@@ -611,9 +588,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_hcp_3d(
             .reorder_particles();
     }
 
-    time_setup.end();
+    time_setup.stop();
     if (shamcomm::world_rank() == 0) {
-        logger::info_ln("Model", "add_cube_hcp took :", time_setup.elasped_sec(), "s");
+        logger::info_ln("Model", "add_cube_hcp took :", time_setup.elapsed_sec(), "s");
     }
 }
 
@@ -712,9 +689,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_hcp_3d_v2(
         shamlog_debug_ln("Gen", "gen.is_done()", gen.is_done());
     }
 
-    time_setup.end();
+    time_setup.stop();
     if (shamcomm::world_rank() == 0) {
-        logger::info_ln("Model", "add_cube_hcp took :", time_setup.elasped_sec(), "s");
+        logger::info_ln("Model", "add_cube_hcp took :", time_setup.elapsed_sec(), "s");
     }
 }
 
@@ -991,7 +968,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_big_disc_3d(
                     return;
                 }
 
-                log += shambase::format(
+                log += sham::format(
                     "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
                     shamcomm::world_rank(),
                     p.id_patch,
@@ -1025,40 +1002,35 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_big_disc_3d(
                     u32 len = vec_pos.size();
                     PatchDataField<Tvec> &f
                         = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("xyz"));
-                    sycl::buffer<Tvec> buf(vec_pos.data(), len);
-                    f.override(buf, len);
+                    f.override(vec_pos, len);
                 }
 
                 {
                     u32 len = vec_pos.size();
                     PatchDataField<Tscal> &f
                         = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("hpart"));
-                    sycl::buffer<Tscal> buf(vec_h.data(), len);
-                    f.override(buf, len);
+                    f.override(vec_h, len);
                 }
 
                 {
                     u32 len = vec_pos.size();
                     PatchDataField<Tscal> &f
                         = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("uint"));
-                    sycl::buffer<Tscal> buf(vec_u.data(), len);
-                    f.override(buf, len);
+                    f.override(vec_u, len);
                 }
 
                 if (solver.solver_config.is_eos_locally_isothermal()) {
                     u32 len = vec_pos.size();
                     PatchDataField<Tscal> &f
                         = tmp.get_field<Tscal>(sched.pdl_old().get_field_idx<Tscal>("soundspeed"));
-                    sycl::buffer<Tscal> buf(vec_cs.data(), len);
-                    f.override(buf, len);
+                    f.override(vec_cs, len);
                 }
 
                 {
                     u32 len = vec_pos.size();
                     PatchDataField<Tvec> &f
                         = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("vxyz"));
-                    sycl::buffer<Tvec> buf(vec_vel.data(), len);
-                    f.override(buf, len);
+                    f.override(vec_vel, len);
                 }
 
                 pdat.insert_elements(tmp);
@@ -1076,11 +1048,11 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_big_disc_3d(
             }
         } while (!gen.is_done() && max_loc_sum_ins_cnt < sched.crit_patch_split * 8);
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         // if(logger::details::loglevel >= shamcomm::logs::log_info){
         //     std::string log_gathered = "";
-        //     shamcomm::gather_str(log, log_gathered);
+        //     shamalgs::collective::gather_str(log, log_gathered);
         //
         //     if (shamcomm::world_rank() == 0) {
         //         shamlog_debug_ln("Model", "Push particles : ", log_gathered);
@@ -1098,9 +1070,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_big_disc_3d(
             .reorder_particles();
     }
 
-    time_setup.end();
+    time_setup.stop();
     if (shamcomm::world_rank() == 0) {
-        logger::info_ln("Model", "add_big_disc took :", time_setup.elasped_sec(), "s");
+        logger::info_ln("Model", "add_big_disc took :", time_setup.elapsed_sec(), "s");
     }
 }
 
@@ -1169,7 +1141,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_fcc_3d(
                 return;
             }
 
-            log += shambase::format(
+            log += sham::format(
                 "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
                 shamcomm::world_rank(),
                 p.id_patch,
@@ -1185,8 +1157,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_fcc_3d(
                 u32 len = vec_acc.size();
                 PatchDataField<Tvec> &f
                     = tmp.get_field<Tvec>(sched.pdl_old().get_field_idx<Tvec>("xyz"));
-                sycl::buffer<Tvec> buf(vec_acc.data(), len);
-                f.override(buf, len);
+                f.override(vec_acc, len);
             }
 
             {
@@ -1198,10 +1169,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_cube_fcc_3d(
             pdat.insert_elements(tmp);
         });
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         std::string log_gathered = "";
-        shamcomm::gather_str(log, log_gathered);
+        shamalgs::collective::gather_str(log, log_gathered);
 
         if (shamcomm::world_rank() == 0) {
             logger::info_ln("Model", "Push particles : ", log_gathered);
@@ -1309,7 +1280,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
 
     // Load time infos
     f64 time_phdump = phdump.read_header_float<f64>("time");
-    solver.solver_config.set_time(time_phdump);
+    solver.set_time(time_phdump);
 
     using namespace shamrock::patch;
 
@@ -1350,7 +1321,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
                 return;
             }
 
-            log += shambase::format(
+            log += sham::format(
                 "\n  rank = {}  patch id={}, add N={} particles, coords = {} {}",
                 shamcomm::world_rank(),
                 p.id_patch,
@@ -1399,10 +1370,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
             pdat.insert_elements(ptmp);
         });
 
-        sched.check_patchdata_locality_corectness();
+        sched.check_patchdata_locality_correctness();
 
         std::string log_gathered = "";
-        shamcomm::gather_str(log, log_gathered);
+        shamalgs::collective::gather_str(log, log_gathered);
 
         if (shamcomm::world_rank() == 0) {
             logger::info_ln("Model", "Push particles : ", log_gathered);
@@ -1511,16 +1482,12 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     bool bypass_error_check = false;
 
     auto get_sink_count = [&]() -> int {
-        if (solver.storage.sinks.is_empty()) {
-            return 0;
-        } else {
-            return int(solver.storage.sinks.get().size());
-        }
+        return int(get_sink_pos<Tvec>(shambase::get_check_ref(ctx.sched).synchronized_data).size());
     };
 
     dump.override_magic_number();
     dump.iversion = 1;
-    dump.fileid   = shambase::format("{:100s}", "FT:Phantom Shamrock writter");
+    dump.fileid   = sham::format("{:100s}", "FT:Phantom Shamrock writer");
 
     u32 Ntot = get_total_part_count();
     dump.table_header_fort_int.add("nparttot", Ntot);
@@ -1562,8 +1529,8 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
 
     write_shamrock_eos_in_phantom_dump(solver.solver_config.eos_config, dump, bypass_error_check);
 
-    dump.table_header_fort_real.add("time", solver.solver_config.get_time());
-    dump.table_header_fort_real.add("dtmax", solver.solver_config.get_dt_sph());
+    dump.table_header_fort_real.add("time", solver.get_time());
+    dump.table_header_fort_real.add("dtmax", solver.get_dt_sph());
 
     dump.table_header_fort_real.add("rhozero", 0);
     dump.table_header_fort_real.add("hfact", Kernel::hfactd);
@@ -1616,35 +1583,38 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
 
     dump.blocks.push_back(std::move(block_part));
 
-    if (!solver.storage.sinks.is_empty()) {
+    {
+        auto &sync = shambase::get_check_ref(ctx.sched).synchronized_data;
+        auto edges = get_sink_edges<Tvec>(sync);
+        if (edges.has_sinks()) {
+            auto sinks = to_sink_particles(edges);
+            // add sinks to block 1
+            PhantomDumpBlock sink_block;
 
-        auto &sinks = solver.storage.sinks.get();
-        // add sinks to block 1
-        PhantomDumpBlock sink_block;
+            u64 xid  = sink_block.get_ref_fort_real("x");
+            u64 yid  = sink_block.get_ref_fort_real("y");
+            u64 zid  = sink_block.get_ref_fort_real("z");
+            u64 mid  = sink_block.get_ref_fort_real("m");
+            u64 hid  = sink_block.get_ref_fort_real("h");
+            u64 vxid = sink_block.get_ref_fort_real("vx");
+            u64 vyid = sink_block.get_ref_fort_real("vy");
+            u64 vzid = sink_block.get_ref_fort_real("vz");
 
-        u64 xid  = sink_block.get_ref_fort_real("x");
-        u64 yid  = sink_block.get_ref_fort_real("y");
-        u64 zid  = sink_block.get_ref_fort_real("z");
-        u64 mid  = sink_block.get_ref_fort_real("m");
-        u64 hid  = sink_block.get_ref_fort_real("h");
-        u64 vxid = sink_block.get_ref_fort_real("vx");
-        u64 vyid = sink_block.get_ref_fort_real("vy");
-        u64 vzid = sink_block.get_ref_fort_real("vz");
+            for (SinkParticle<Tvec> s : sinks) {
+                sink_block.blocks_fort_real[xid].vals.push_back(s.pos.x());
+                sink_block.blocks_fort_real[yid].vals.push_back(s.pos.y());
+                sink_block.blocks_fort_real[zid].vals.push_back(s.pos.z());
+                sink_block.blocks_fort_real[mid].vals.push_back(s.mass);
+                sink_block.blocks_fort_real[hid].vals.push_back(s.accretion_radius);
+                sink_block.blocks_fort_real[vxid].vals.push_back(s.velocity.x());
+                sink_block.blocks_fort_real[vyid].vals.push_back(s.velocity.y());
+                sink_block.blocks_fort_real[vzid].vals.push_back(s.velocity.z());
+            }
 
-        for (SinkParticle<Tvec> s : sinks) {
-            sink_block.blocks_fort_real[xid].vals.push_back(s.pos.x());
-            sink_block.blocks_fort_real[yid].vals.push_back(s.pos.y());
-            sink_block.blocks_fort_real[zid].vals.push_back(s.pos.z());
-            sink_block.blocks_fort_real[mid].vals.push_back(s.mass);
-            sink_block.blocks_fort_real[hid].vals.push_back(s.accretion_radius);
-            sink_block.blocks_fort_real[vxid].vals.push_back(s.velocity.x());
-            sink_block.blocks_fort_real[vyid].vals.push_back(s.velocity.y());
-            sink_block.blocks_fort_real[vzid].vals.push_back(s.velocity.z());
+            sink_block.tot_count = sinks.size();
+
+            dump.blocks.push_back(std::move(sink_block));
         }
-
-        sink_block.tot_count = sinks.size();
-
-        dump.blocks.push_back(std::move(sink_block));
     }
 
     return dump;

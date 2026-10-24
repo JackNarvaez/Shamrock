@@ -34,7 +34,10 @@
 #include "shamrock/patch/PatchDataField.hpp"
 #include "shamsys/NodeInstance.hpp"
 #include "shamsys/legacy/log.hpp"
+#include <algorithm>
 #include <memory>
+#include <numeric>
+#include <vector>
 
 template<class T>
 class Kernel_Extract_element;
@@ -250,7 +253,7 @@ template<class T>
 void PatchDataField<T>::index_remap(sham::DeviceBuffer<u32> &index_map, u32 len) {
 
     if (len != get_obj_cnt()) {
-        throw shambase::make_except_with_loc<std::invalid_argument>(shambase::format(
+        throw shambase::make_except_with_loc<std::invalid_argument>(sham::format(
             "the match of the new index map does not match with the patchdatafield obj count: {} "
             "!= {}",
             len,
@@ -263,7 +266,7 @@ void PatchDataField<T>::index_remap(sham::DeviceBuffer<u32> &index_map, u32 len)
 template<class T>
 void PatchDataField<T>::permut_vars(const std::vector<u32> &permut) {
     if (permut.size() != get_nvar()) {
-        throw shambase::make_except_with_loc<std::invalid_argument>(shambase::format(
+        throw shambase::make_except_with_loc<std::invalid_argument>(sham::format(
             "the number of permut is not equal to the patchdatafield nvar: {} != {}",
             permut.size(),
             get_nvar()));
@@ -300,7 +303,7 @@ void PatchDataField<T>::remove_ids(const sham::DeviceBuffer<u32> &ids_to_rem, u3
     auto &q        = dev_sched->get_queue();
 
     if (len > get_obj_cnt()) {
-        throw shambase::make_except_with_loc<std::invalid_argument>(shambase::format(
+        throw shambase::make_except_with_loc<std::invalid_argument>(sham::format(
             "the number of ids to remove is greater than the patchdatafield obj count: {} > {}",
             len,
             get_obj_cnt()));
@@ -328,10 +331,38 @@ void PatchDataField<T>::remove_ids(const sham::DeviceBuffer<u32> &ids_to_rem, u3
     auto keep_ids = shamalgs::numeric::stream_compact(dev_sched, keep_flag, nobj);
 
     if (keep_ids.get_size() != remaining) {
-        throw shambase::make_except_with_loc<std::invalid_argument>(shambase::format(
+
+        // post mortem analysis
+
+        std::vector<u32> ids_to_rem_vec = ids_to_rem.copy_to_stdvec_idx_range(0, len);
+
+        std::sort(ids_to_rem_vec.begin(), ids_to_rem_vec.end());
+
+        bool has_duplicates = false;
+
+        // Adjacent elements in ids_to_rem_vec should be different
+        has_duplicates = std::adjacent_find(ids_to_rem_vec.begin(), ids_to_rem_vec.end())
+                         != ids_to_rem_vec.end();
+
+        std::vector<u32> keep_flags_vec = keep_flag.copy_to_stdvec();
+
+        // compute keep flags sum
+        u32 keep_flags_sum = std::accumulate(keep_flags_vec.begin(), keep_flags_vec.end(), u32(0));
+
+        std::string log = sham::format(
             "the number of remaining ids {} is different from the expected {}",
             keep_ids.get_size(),
-            remaining));
+            remaining);
+
+        log += "\n\nAdditional information:\n";
+        if (has_duplicates) {
+            log += "  ids_to_rem has duplicates = true\n";
+        } else {
+            log += "  ids_to_rem has duplicates = false\n";
+        }
+        log += sham::format("  keep flags sum = {}\n", keep_flags_sum);
+
+        throw shambase::make_except_with_loc<std::invalid_argument>(log);
     }
 
     index_remap_resize(keep_ids, remaining);
@@ -463,26 +494,19 @@ template<class T>
 bool PatchDataField<T>::has_nan() {
     StackEntry stack_loc{};
 
-    auto tmp = buf.copy_to_sycl_buffer();
-
-    return shamalgs::reduction::has_nan(shamsys::instance::get_compute_queue(), tmp, get_val_cnt());
+    return shamalgs::reduction::has_nan(buf, get_val_cnt());
 }
 template<class T>
 bool PatchDataField<T>::has_inf() {
     StackEntry stack_loc{};
 
-    auto tmp = buf.copy_to_sycl_buffer();
-
-    return shamalgs::reduction::has_inf(shamsys::instance::get_compute_queue(), tmp, get_val_cnt());
+    return shamalgs::reduction::has_inf(buf, get_val_cnt());
 }
 template<class T>
 bool PatchDataField<T>::has_nan_or_inf() {
     StackEntry stack_loc{};
 
-    auto tmp = buf.copy_to_sycl_buffer();
-
-    return shamalgs::reduction::has_nan_or_inf(
-        shamsys::instance::get_compute_queue(), tmp, get_val_cnt());
+    return shamalgs::reduction::has_nan_or_inf(buf, get_val_cnt());
 }
 
 //////////////////////////////////////////////////////////////////////////

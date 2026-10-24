@@ -21,15 +21,15 @@ void AsciiSplitDump::PatchDump::write_val(T val) {
     if constexpr (
         std::is_same_v<T, u32> || std::is_same_v<T, i32> || std::is_same_v<T, u64>
         || std::is_same_v<T, i64>) {
-        file << shambase::format("{:}\n", val);
+        file << sham::format("{:}\n", val);
     } else if constexpr (std::is_same_v<T, i64_3> || std::is_same_v<T, i32_3>) {
-        file << shambase::format("{:} {:} {:}\n", val.x(), val.y(), val.z());
+        file << sham::format("{:} {:} {:}\n", val.x(), val.y(), val.z());
     } else if constexpr (std::is_same_v<T, f64> || std::is_same_v<T, f32>) {
-        file << shambase::format("{:0.9f}\n", val);
+        file << sham::format("{:0.9f}\n", val);
     } else if constexpr (std::is_same_v<T, f64_3> || std::is_same_v<T, f32_3>) {
-        file << shambase::format("{:0.9f} {:0.9f} {:0.9f}\n", val.x(), val.y(), val.z());
+        file << sham::format("{:0.9f} {:0.9f} {:0.9f}\n", val.x(), val.y(), val.z());
     } else if constexpr (std::is_same_v<T, f64_8> || std::is_same_v<T, f32_8>) {
-        file << shambase::format(
+        file << sham::format(
             "{:0.9f} {:0.9f} {:0.9f} {:0.9f} {:0.9f} {:0.9f} {:0.9f} {:0.9f}\n",
             val.s0(),
             val.s1(),
@@ -48,14 +48,6 @@ template<class T>
 void AsciiSplitDump::PatchDump::write_table(std::vector<T> buf, u32 len) {
     for (u32 i = 0; i < len; i++) {
         write_val(buf[i]);
-    }
-}
-
-template<class T>
-void AsciiSplitDump::PatchDump::write_table(sycl::buffer<T> buf, u32 len) {
-    sycl::host_accessor acc{buf, sycl::read_only};
-    for (u32 i = 0; i < len; i++) {
-        write_val(acc[i]);
     }
 }
 
@@ -82,9 +74,7 @@ void AsciiSplitDump::PatchDump::write_table(sycl::buffer<T> buf, u32 len) {
     #define X(_arg_)                                                                               \
         template void AsciiSplitDump::PatchDump::write_val<_arg_>(_arg_ val);                      \
         template void AsciiSplitDump::PatchDump::write_table<_arg_>(                               \
-            std::vector<_arg_> buf, u32 len);                                                      \
-        template void AsciiSplitDump::PatchDump::write_table<_arg_>(                               \
-            sycl::buffer<_arg_> buf, u32 len);
+            std::vector<_arg_> buf, u32 len);
 
 XMAC_TYPES
     #undef X

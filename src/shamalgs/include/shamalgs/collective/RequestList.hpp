@@ -79,10 +79,10 @@ namespace shamalgs::collective {
             std::string err_msg = "";
             for (size_t i = 0; i < rqs.size(); i++) {
                 if (!is_ready[i]) {
-                    err_msg += shambase::format("request {} is not ready\n", i);
+                    err_msg += sham::format("request {} is not ready\n", i);
                 }
             }
-            std::string msg = shambase::format("timeout : \n{}", err_msg);
+            std::string msg = sham::format("timeout : \n{}", err_msg);
             throw shambase::make_except_with_loc<std::runtime_error>(msg);
         }
 
@@ -99,19 +99,19 @@ namespace shamalgs::collective {
             size_t in_flight;
 
             while ((in_flight = remain_count()) >= max_in_flight) {
-                twait.end();
-                if (twait.elasped_sec() > timeout) {
+                twait.stop();
+                if (twait.elapsed_sec() > timeout) {
                     report_timeout();
                 }
 
-                if (twait.elasped_sec() - last_print_time > print_freq) {
+                if (twait.elapsed_sec() - last_print_time > print_freq) {
                     logger::warn_ln(
                         "SparseComm",
                         "too many messages in flight :",
                         in_flight,
                         "/",
                         max_in_flight);
-                    last_print_time = twait.elasped_sec();
+                    last_print_time = twait.elapsed_sec();
                 }
             }
         }

@@ -29,6 +29,14 @@ std::optional<std::string> shamcmdopt::getenv_str(const char *env_var) {
     return {};
 }
 
+std::optional<std::string_view> shamcmdopt::getenv_str_view(const char *env_var) {
+    const char *val = std::getenv(env_var);
+    if (val != nullptr) {
+        return std::string_view(val);
+    }
+    return {};
+}
+
 /// List of documented env variables
 std::vector<std::pair<std::string, std::string>> env_var_reg = {};
 
@@ -37,7 +45,7 @@ void shamcmdopt::register_env_var_doc(std::string env_var, std::string desc) {
     for (auto &[_env_var, _desc] : env_var_reg) {
         if (_env_var == env_var) {
             shambase::throw_with_loc<std::invalid_argument>(
-                shambase::format("The env var {} is already registered", env_var));
+                sham::format("The env var {} is already registered", env_var));
         }
     }
 
@@ -52,7 +60,7 @@ void shamcmdopt::print_help_env_var() {
 
     auto stringify = [](std::optional<std::string> val) -> std::string {
         if (val) {
-            return shambase::format("= {}", *val);
+            return sham::format("= {}", *val);
         }
         return "";
     };
@@ -61,10 +69,10 @@ void shamcmdopt::print_help_env_var() {
     for (const auto &[var, desc] : env_var_reg) {
         auto val = getenv_str(var.c_str());
 
-        shambase::println(shambase::format("  {:<29} : {}", var, desc));
+        shambase::println(sham::format("  {:<29} : {}", var, desc));
 
         if (val) {
-            shambase::println(shambase::format("    = {}", *val));
+            shambase::println(sham::format("    = {}", *val));
         }
     }
 }

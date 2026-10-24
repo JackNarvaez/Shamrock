@@ -16,6 +16,8 @@
 
 #include "shambase/stacktrace.hpp"
 #include "shambase/time.hpp"
+#include "sham/format/format.hpp"
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -38,7 +40,7 @@ namespace shambase::details {
 
     std::string ChromeProfileEntry::format(u32 world_rank) {
         if (is_start) {
-            return shambase::format_printf(
+            return sham::format_printf(
                 R"({
                 "cat": "%s",
                 "pid": %d,
@@ -56,7 +58,7 @@ namespace shambase::details {
                 name.c_str());
 
         } else {
-            return shambase::format_printf(
+            return sham::format_printf(
                 R"({
                 "cat": "%s",
                 "pid": %d,
@@ -92,7 +94,8 @@ namespace shambase::details {
         };
         // Add the entry to the storage
         profile_data_chrome.push_back(
-            ChromeProfileEntry{loc.function_name(), to_prof_time(time), is_start});
+            ChromeProfileEntry{
+                .name = loc.function_name(), .time_val = to_prof_time(time), .is_start = is_start});
     }
 
     /**
@@ -151,8 +154,8 @@ namespace shambase::details {
      * and the name of the entry.
      */
     struct ProfileEntry {
-        f64 time_start;         ///< Start time of the profiling entry (in sec since programm start)
-        f64 time_end;           ///< End time of the profiling entry (in sec since programm start)
+        f64 time_start;         ///< Start time of the profiling entry (in sec since program start)
+        f64 time_end;           ///< End time of the profiling entry (in sec since program start)
         std::string entry_name; ///< Name of the profiling entry
 
         /**
@@ -161,7 +164,7 @@ namespace shambase::details {
          * @return std::string JSON string representation of the profile entry
          */
         std::string format() {
-            return shambase::format_printf(
+            return sham::format_printf(
                 R"({"tstart": %f, "tend": %f, "name": "%s"})", time_start, time_end, entry_name);
         }
     };
@@ -177,8 +180,8 @@ namespace shambase::details {
      * @return f64 Wall time in seconds since program start
      */
     f64 get_wtime() {
-        global_timer.end();
-        return global_timer.elasped_sec();
+        global_timer.stop();
+        return global_timer.elapsed_sec();
     }
 
     void register_profile_entry_start(std::source_location loc, f64 start_time) {
@@ -187,7 +190,8 @@ namespace shambase::details {
 
     void register_profile_entry(std::source_location loc, f64 start_time, f64 end_time) {
         // Add the profile entry to the storage
-        profile_data.push_back({start_time, end_time, loc.function_name()});
+        profile_data.push_back(
+            {.time_start = start_time, .time_end = end_time, .entry_name = loc.function_name()});
         // Add a Chrome profiling entry to the storage
         add_entry_chrome(loc, end_time, false);
     };
@@ -255,7 +259,7 @@ namespace shambase {
         }
 
         for (u32 i = 0; i < lines.size(); i++) {
-            ss << shambase::format(" {:2} : {}\n", i, lines[i]);
+            ss << sham::format(" {:2} : {}\n", i, lines[i]);
         }
 
         for (auto &generator : _callstack_gen_info_generators) {

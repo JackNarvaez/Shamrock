@@ -46,6 +46,11 @@ namespace shammodels::zeus {
                     self.set_eos_gamma(eos_gamma);
                 })
             .def(
+                "set_Csafe",
+                [](TConfig &self, Tscal Csafe) {
+                    self.Csafe = Csafe;
+                })
+            .def(
                 "set_consistent_transport",
                 [](TConfig &self, bool enable) {
                     self.use_consistent_transport = enable;
@@ -122,7 +127,8 @@ namespace shammodels::zeus {
     }
 } // namespace shammodels::zeus
 
-Register_pymod(pyamrzeusmodel) {
+ON_PYTHON_INIT {
+    auto &m = root_module;
 
     py::module mzeus = m.def_submodule("model_zeus", "Shamrock Zeus solver");
 

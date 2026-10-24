@@ -33,4 +33,31 @@ namespace shamunits::details {
             return tmp * tmp * a;
         }
     }
+
+    /**
+     * @brief Runtime twin of pow_constexpr_fast_inv, for an exponent only known at run time
+     *
+     * Same square-and-multiply order (most significant bit first), so for any n it returns
+     * exactly what pow_constexpr_fast_inv<n> returns. The caller supplies the reciprocal, so a
+     * negative exponent uses a_inv and never divides.
+     */
+    template<class T>
+    inline constexpr T ipow(T a, int n, T a_inv) noexcept {
+        T base     = (n < 0) ? a_inv : a;
+        unsigned k = (n < 0) ? 0u - static_cast<unsigned>(n) : static_cast<unsigned>(n);
+
+        int top_bit = -1;
+        for (unsigned t = k; t != 0; t >>= 1) {
+            ++top_bit;
+        }
+
+        T res = T{1};
+        for (int b = top_bit; b >= 0; --b) {
+            res = res * res;
+            if (((k >> b) & 1u) != 0) {
+                res = res * base;
+            }
+        }
+        return res;
+    }
 } // namespace shamunits::details

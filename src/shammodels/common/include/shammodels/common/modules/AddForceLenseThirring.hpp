@@ -12,19 +12,34 @@
 /**
  * @file AddForceLenseThirring.hpp
  * @author Timothée David--Cléris (tim.shamrock@proton.me)
+ * @author Yona Lapeyre (yona.lapeyre@ens-lyon.fr)
  * @brief Adds the Lense-Thirring force acceleration.
  *
  */
 
-#include "shambase/SourceLocation.hpp"
 #include "shambackends/kernel_call_distrib.hpp"
 #include "shambackends/math.hpp"
-#include "shamcomm/logs.hpp"
-#include "shamrock/solvergraph/IDataEdge.hpp"
 #include "shamrock/solvergraph/IFieldSpan.hpp"
-#include "shamrock/solvergraph/INode.hpp"
 #include "shamrock/solvergraph/Indexes.hpp"
+#include "shamsolvergraph/edge/IDataEdge.hpp"
+#include "shamsolvergraph/node/INode.hpp"
 #include "shamsys/NodeInstance.hpp"
+
+#define NODE_EDGES(X_RO, X_RW)                                                                     \
+    /* ------------------- inputs ------------------- */                                           \
+    X_RO(shamrock::solvergraph::IDataEdge<Tscal>, constant_G)                                      \
+    X_RO(shamrock::solvergraph::IDataEdge<Tscal>, constant_c)                                      \
+    X_RO(shamrock::solvergraph::IDataEdge<Tscal>, central_mass)                                    \
+    X_RO(shamrock::solvergraph::IDataEdge<Tvec>, central_pos)                                      \
+    X_RO(shamrock::solvergraph::IDataEdge<Tvec>, central_vel)                                      \
+    X_RO(shamrock::solvergraph::IDataEdge<Tscal>, a_spin)                                          \
+    X_RO(shamrock::solvergraph::IDataEdge<Tvec>, dir_spin)                                         \
+    X_RO(shamrock::solvergraph::IFieldSpan<Tvec>, spans_positions)                                 \
+    X_RO(shamrock::solvergraph::IFieldSpan<Tvec>, spans_velocities)                                \
+    X_RO(shamrock::solvergraph::Indexes<u32>, sizes)                                               \
+                                                                                                   \
+    /* ------------------- outputs ------------------- */                                          \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tvec>, spans_accel_ext)
 
 namespace shammodels::common::modules {
     template<class Tvec>
@@ -35,59 +50,9 @@ namespace shammodels::common::modules {
         public:
         AddForceLenseThirring() = default;
 
-        struct Edges {
-            const shamrock::solvergraph::IDataEdge<Tscal> &constant_G;
-            const shamrock::solvergraph::IDataEdge<Tscal> &constant_c;
-            const shamrock::solvergraph::IDataEdge<Tscal> &central_mass;
-            const shamrock::solvergraph::IDataEdge<Tvec> &central_pos;
-            const shamrock::solvergraph::IDataEdge<Tscal> &a_spin;
-            const shamrock::solvergraph::IDataEdge<Tvec> &dir_spin;
+        EXPAND_NODE_EDGES(NODE_EDGES)
 
-            const shamrock::solvergraph::IFieldSpan<Tvec> &spans_positions;
-            const shamrock::solvergraph::IFieldSpan<Tvec> &spans_velocities;
-            const shamrock::solvergraph::Indexes<u32> &sizes;
-            shamrock::solvergraph::IFieldSpan<Tvec> &spans_accel_ext;
-        };
-
-        inline void set_edges(
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tscal>> constant_G,
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tscal>> constant_c,
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tscal>> central_mass,
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tvec>> central_pos,
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tscal>> a_spin,
-            std::shared_ptr<shamrock::solvergraph::IDataEdge<Tvec>> dir_spin,
-            std::shared_ptr<shamrock::solvergraph::IFieldSpan<Tvec>> spans_positions,
-            std::shared_ptr<shamrock::solvergraph::IFieldSpan<Tvec>> spans_velocities,
-            std::shared_ptr<shamrock::solvergraph::Indexes<u32>> sizes,
-            std::shared_ptr<shamrock::solvergraph::IFieldSpan<Tvec>> spans_accel_ext) {
-            __internal_set_ro_edges(
-                {constant_G,
-                 constant_c,
-                 central_mass,
-                 central_pos,
-                 a_spin,
-                 dir_spin,
-                 spans_positions,
-                 spans_velocities,
-                 sizes});
-            __internal_set_rw_edges({spans_accel_ext});
-        }
-
-        inline Edges get_edges() {
-            return Edges{
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tscal>>(0),
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tscal>>(1),
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tscal>>(2),
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tvec>>(3),
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tscal>>(4),
-                get_ro_edge<shamrock::solvergraph::IDataEdge<Tvec>>(5),
-                get_ro_edge<shamrock::solvergraph::IFieldSpan<Tvec>>(6),
-                get_ro_edge<shamrock::solvergraph::IFieldSpan<Tvec>>(7),
-                get_ro_edge<shamrock::solvergraph::Indexes<u32>>(8),
-                get_rw_edge<shamrock::solvergraph::IFieldSpan<Tvec>>(0)};
-        }
-
-        void _impl_evaluate_internal() {
+        inline void _impl_evaluate_internal() {
 
             __shamrock_stack_entry();
 
@@ -100,6 +65,7 @@ namespace shammodels::common::modules {
             Tscal c       = edges.constant_c.data;
             Tscal cmass   = edges.central_mass.data;
             Tvec cpos     = edges.central_pos.data;
+            Tvec cvel     = edges.central_vel.data;
             Tscal a_spin  = edges.a_spin.data;
             Tvec dir_spin = edges.dir_spin.data;
 
@@ -112,9 +78,9 @@ namespace shammodels::common::modules {
                     edges.spans_positions.get_spans(), edges.spans_velocities.get_spans()},
                 sham::DDMultiRef{edges.spans_accel_ext.get_spans()},
                 edges.sizes.indexes,
-                [cpos, S](u32 gid, const Tvec *xyz, const Tvec *vxyz, Tvec *axyz_ext) {
-                    Tvec r_a       = xyz[gid];
-                    Tvec v_a       = vxyz[gid];
+                [cpos, cvel, S](u32 gid, const Tvec *xyz, const Tvec *vxyz, Tvec *axyz_ext) {
+                    Tvec r_a       = xyz[gid] - cpos;
+                    Tvec v_a       = vxyz[gid] - cvel;
                     Tscal abs_ra   = sycl::length(r_a);
                     Tscal abs_ra_2 = abs_ra * abs_ra;
                     Tscal abs_ra_3 = abs_ra_2 * abs_ra;
@@ -128,6 +94,8 @@ namespace shammodels::common::modules {
 
         inline virtual std::string _impl_get_label() const { return "AddForceLenseThirring"; };
 
-        virtual std::string _impl_get_tex() const { return "TODO"; }
+        inline virtual std::string _impl_get_tex() const { return "TODO"; };
     };
 } // namespace shammodels::common::modules
+
+#undef NODE_EDGES

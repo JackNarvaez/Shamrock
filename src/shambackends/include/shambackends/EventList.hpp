@@ -16,6 +16,7 @@
  */
 
 #include "shambase/stacktrace.hpp"
+#include "sham/format/format.hpp"
 #include "shambackends/DeviceContext.hpp"
 
 namespace sham {
@@ -40,13 +41,13 @@ namespace sham {
          * <... add events ...>
          * sycl::queue q{};
          * q.submit([&](sycl::handler &h) {
-         *     events.apply_dependancy(h);
+         *     events.apply_dependency(h);
          *     // ...
          * });
          *
          * @endcode
          */
-        inline void apply_dependancy(sycl::handler &h) { h.depends_on(events); }
+        inline void apply_dependency(sycl::handler &h) { h.depends_on(events); }
 
         /**
          * @brief Wait for all events in the list to be finished.
@@ -127,7 +128,7 @@ namespace sham {
          * @return A string representation of the EventList's state.
          */
         inline std::string get_state() {
-            return shambase::format("events : {}, consumed : {}", events.size(), consumed);
+            return sham::format("events : {}, consumed : {}", events.size(), consumed);
         }
 
         /// Default constructor for EventList with source location

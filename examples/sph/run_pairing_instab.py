@@ -24,6 +24,11 @@ if not shamrock.sys.is_initialized():
     shamrock.sys.init("0:0")
 
 # %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+
+# %%
 # Setup parameters
 
 gamma = 5.0 / 3.0
@@ -40,7 +45,7 @@ sim_name = "pairing_instab"
 
 N_target = 500
 scheduler_split_val = int(2e7)
-scheduler_merge_val = int(1)
+scheduler_merge_val = 1
 
 os.makedirs(dump_folder, exist_ok=True)
 
@@ -80,7 +85,7 @@ model.set_solver_config(cfg)
 model.init_scheduler(scheduler_split_val, scheduler_merge_val)
 
 
-bmin, bmax = model.get_ideal_hcp_box(dr, bmin, bmax)
+bmin, bmax = shamrock.math.get_ideal_hcp_box(dr, bmin, bmax)
 xm, ym, zm = bmin
 xM, yM, zM = bmax
 
@@ -199,6 +204,9 @@ def make_plot(model, iplot):
         edgecolors="black",
         linewidths=0.5,
     )
+
+    ax.minorticks_off()
+
     cbar = plt.colorbar(sc, ax=ax, orientation="horizontal", pad=0.1, aspect=30)
     cbar.set_label("hpart")
     ax.set_title(f"t = {model.get_time():0.3f}")
@@ -241,7 +249,7 @@ for iplot in range(50):
 # Convert PNG sequence to Image sequence in mpl
 ####################################################
 
-import matplotlib.animation as animation
+from matplotlib import animation
 from shamrock.utils.plot import show_image_sequence
 
 render_gif = True

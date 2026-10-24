@@ -24,7 +24,7 @@
 #include <stdexcept>
 
 /// @brief Macro to add a constant to the \ref shamunits::Constants class
-/// For exemple one can add a new constant by adding the following statment inside
+/// For example one can add a new constant by adding the following statement inside
 /// shamunits::Constants
 /// \code{.cpp}
 ///     addconstant(delta_nu_cs) { return Cget(Si::delta_nu_cs,1) * Uget(Hertz, 1); }
@@ -34,7 +34,8 @@
     inline constexpr T name()
 
 /// Utility macro to get the value of a unit in the current unit system with its power
-#define Uget(unitname, mult_pow) units.template get<None, units::unitname, (mult_pow) * power>()
+#define Uget(unitname, mult_pow)                                                                   \
+    units.template get<None, legacy_units::unitname, (mult_pow) * power>()
 
 /// Utility macro to get the value of a constant in the current unit system with its power
 #define Cget(constant_name, mult_pow)                                                              \
@@ -45,7 +46,7 @@
     /* si base ctes  */                                                                            \
     X(delta_nu_cs /**/, Uget(Hertz, 1))                                                            \
     X(c /************/, Uget(m, 1) * Uget(s, -1))                                                  \
-    X(h /************/, Uget(Joule, 1) * Uget(s, -1))                                              \
+    X(h /************/, Uget(Joule, 1) * Uget(s, 1))                                               \
     X(e /************/, Uget(Coulomb, 1))                                                          \
     X(k /************/, Uget(Joule, 1) * Uget(Kelvin, -1))                                         \
     X(Na /***********/, Uget(mole, -1))                                                            \
@@ -73,10 +74,10 @@
     X(planck_mass /****/, Uget(kg, 1))                                                             \
     X(dalton /*********/, Uget(kg, 1))                                                             \
     /* densities */                                                                                \
-    X(guiness_density, Uget(kg, 1) * Uget(m, -1))                                                  \
+    X(guiness_density, Uget(kg, 1) * Uget(m, -3))                                                  \
     /* derived ctes  */                                                                            \
     X(G /**********/, Uget(N, 1) * Uget(m, 2) * Uget(kg, -2))                                      \
-    X(hbar /*******/, Uget(Joule, 1) * Uget(s, -1))                                                \
+    X(hbar /*******/, Uget(Joule, 1) * Uget(s, 1))                                                 \
     X(mu_0 /*******/, Uget(N, 1) * Uget(A, -2))                                                    \
     X(Z_0 /********/, Uget(Ohm, 1))                                                                \
     X(epsilon_0 /**/, Uget(F, 1) * Uget(m, -1))                                                    \
@@ -120,7 +121,7 @@ namespace shamunits {
             // si system base constants
             static constexpr T delta_nu_cs = 9192631770;      // (s-1)
             static constexpr T c           = 299792458;       // (m.s-1)
-            static constexpr T h           = 6.62607015e-34;  // (J.s-1)
+            static constexpr T h           = 6.62607015e-34;  // (J.s)
             static constexpr T e           = 1.602176634e-19; // (C)
             static constexpr T k           = 1.380649e-23;    // (J.K-1 )
             static constexpr T Na          = 6.02214076e23;   // (mol-1 )
@@ -128,7 +129,7 @@ namespace shamunits {
 
             // other constants in si units
             static constexpr T G         = 6.6743015e-11;               // (N.m2.kg-2)
-            static constexpr T hbar      = h / (2 * pi<T>);             // (J.s-1)
+            static constexpr T hbar      = h / (2 * pi<T>);             // (J.s)
             static constexpr T mu_0      = 1.2566370621219e-6;          // (N.A-2)
             static constexpr T Z_0       = mu_0 * c;                    // (Ohm)
             static constexpr T epsilon_0 = 1 / (Z_0 * c);               // (F.m-1)
@@ -156,7 +157,7 @@ namespace shamunits {
             static constexpr T electron_mass = proton_mass * electron_proton_ratio<T>; //(kg)
             static constexpr T earth_mass    = 5.9722e24;                              //(kg)
             static constexpr T jupiter_mass  = 1.898e27;                               //(kg)
-            static constexpr T sol_mass      = 1.98847e30;                             //(kg)
+            static constexpr T sol_mass      = Conv::sol_mass_to_kg;                   //(kg)
             static constexpr T planck_mass   = 2.17643424e-8;                          //(kg)
             static constexpr T dalton        = 1.66053906892e-27;                      //(kg)
 
@@ -167,7 +168,26 @@ namespace shamunits {
         const UnitSystem<T> units;
 
         /// Construct the \ref shamunits::Constants class with a unit system
-        explicit Constants(const UnitSystem<T> units) : units(units) {}
+        constexpr explicit Constants(const UnitSystem<T> units) : units(units) {}
+
+        /// Value of the constant (or unit) `u` in this unit system, e.g. get<constants::G>().
+        /// Same as units.get<u, Tret>(); see UnitSystem::get.
+        template<Unit u, class Tret = T>
+        constexpr Tret get() const noexcept {
+            return units.template get<u, Tret>();
+        }
+
+        /// Value of a constant only known at run time, e.g. get(constants::from_name("G"))
+        template<class Tret = T, class Tu>
+        constexpr Tret get(Unit<Tu> u) const noexcept {
+            return units.template get<Tret>(u);
+        }
+
+        /// get(u) raised to a runtime power: the Python path, Constants(usys).G(power=2)
+        template<class Tret = T, class Tu>
+        constexpr Tret get(Unit<Tu> u, int power) const noexcept {
+            return units.template get<Tret>(u, power);
+        }
 
 /// Define the constant conversions functions
 #define X(name, conv)                                                                              \
@@ -192,10 +212,10 @@ namespace shamunits {
  * \brief get c in the si unit system (m.s-1)
  *
  * \fn shamunits::Constants::h()
- * \brief get h in the current unit system @ref units (J.s-1)
+ * \brief get h in the current unit system @ref units (J.s)
  *
  * \fn shamunits::Constants::Si::h()
- * \brief get h in the si unit system (J.s-1)
+ * \brief get h in the si unit system (J.s)
  *
  * \fn shamunits::Constants::e()
  * \brief get e in the current unit system @ref units (C)
@@ -233,7 +253,7 @@ namespace shamunits {
  * \brief get the value of hbar in the current unit system @ref units
  *
  * \fn shamunits::Constants::Si::hbar()
- * \brief get the value of hbar in the si unit system (J.s-1)
+ * \brief get the value of hbar in the si unit system (J.s)
  *
  * \fn shamunits::Constants::mu_0()
  * \brief get the value of mu_0 in the current unit system @ref units

@@ -343,7 +343,7 @@ void make_indexmap(
 
             for (unsigned int i = 0; i < morton_leaf_count + 2; i++) {
                 if (dest[i] != reduc_index_map[i]) {
-                    throw shambase::make_except_with_loc<std::runtime_error>(shambase::format(
+                    throw shambase::make_except_with_loc<std::runtime_error>(sham::format(
                         "difference i = {}, {} != {}", i, dest[i], reduc_index_map[i]));
                 }
             }
@@ -442,7 +442,7 @@ reduc_ret_t<u32> reduction_alg_impl(
         }
     }
 
-    auto get_corect_buf = [&]() {
+    auto get_correct_buf = [&]() {
         if ((reduction_level) % 2 == 0) {
             return std::move(buf_split_table1);
         } else {
@@ -450,7 +450,7 @@ reduc_ret_t<u32> reduction_alg_impl(
         }
     };
 
-    sham::DeviceBuffer<u32> buf_split_table = get_corect_buf();
+    sham::DeviceBuffer<u32> buf_split_table = get_correct_buf();
 
     return make_indexmap(dev_sched, morton_count, buf_split_table);
 }

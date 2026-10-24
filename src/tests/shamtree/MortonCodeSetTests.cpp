@@ -17,7 +17,10 @@
 #include "shamtest/shamtest.hpp"
 #include "shamtree/MortonCodeSet.hpp"
 #include "shamtree/MortonCodeSortedSet.hpp"
+#include "tests/shamtree/tie_order_utils.hpp"
 #include <vector>
+
+using shamtree::test_utils::sort_ties;
 
 using Tvec    = f64_3;
 using Tmorton = u64;
@@ -76,7 +79,7 @@ inline std::vector<Tmorton> test_mortons_sorted
 
 inline std::vector<u32> index_map_obj_idx = {13, 0, 3, 2, 5, 1, 6, 4, 7, 8, 9, 10, 11, 12, 15, 14};
 
-TestStart(Unittest, "shamtree/MortonCodeSet", test_morton_codeset, 1) {
+NEW_TEST(Unittest, "shamtree/MortonCodeSet", 1) {
 
     shammath::AABB<Tvec> bb = shammath::AABB<Tvec>(Tvec(0, 0, 0), Tvec(1, 1, 1));
 
@@ -94,7 +97,7 @@ TestStart(Unittest, "shamtree/MortonCodeSet", test_morton_codeset, 1) {
     REQUIRE_EQUAL(set.morton_codes.copy_to_stdvec(), test_mortons);
 }
 
-TestStart(Unittest, "shamtree/MortonCodeSortedSet", test_morton_code_sort_set, 1) {
+NEW_TEST(Unittest, "shamtree/MortonCodeSortedSet", 1) {
 
     shammath::AABB<Tvec> bb = shammath::AABB<Tvec>(Tvec(0, 0, 0), Tvec(1, 1, 1));
 
@@ -121,5 +124,7 @@ TestStart(Unittest, "shamtree/MortonCodeSortedSet", test_morton_code_sort_set, 1
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.get_size(), 16);
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.copy_to_stdvec(), test_mortons_sorted);
     REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.get_size(), 16);
-    REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), index_map_obj_idx);
+    REQUIRE_EQUAL(
+        sort_ties(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 }

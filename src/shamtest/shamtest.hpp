@@ -15,7 +15,9 @@
  * @brief main include file for testing
  */
 
+#include "shambase/unique_name_macro.hpp"
 #include "details/Test.hpp"
+#include <optional>
 
 /**
  * @brief namespace containing stuff related to the test library
@@ -118,22 +120,33 @@ namespace shamtest {
 
 } // namespace shamtest
 
+#define ANY_WORLD_SIZE -1
+
+#define _internal_new_test(type, name, func_name, func_ptr, class_name, node_cnt)                  \
+    static void func_name();                                                                       \
+    static void (*func_ptr)() = func_name;                                                         \
+    static shamtest::details::TestStaticInit class_name(                                           \
+        shamtest::details::Test{type, name, node_cnt, func_ptr});                                  \
+    static void func_name()
+
 /**
  * @brief Macro to declare a test
  *
- * Exemple :
+ * Example :
  * \code{.cpp}
- * TestStart(Unittest, "testname", testfuncname, 1) {
- *     shamtest::asserts().assert_bool("what a reliable test", true);
+ * NEW_TEST(Unittest, "testname", 1) {
+ *     REQUIRE(true);
  * }
  * \endcode
  */
-#define TestStart(type, name, func_name, node_cnt)                                                 \
-    void test_func_##func_name();                                                                  \
-    void (*test_func_ptr_##func_name)() = test_func_##func_name;                                   \
-    shamtest::details::TestStaticInit test_class_obj_##func_name(                                  \
-        shamtest::details::Test{type, name, node_cnt, test_func_ptr_##func_name});                 \
-    void test_func_##func_name()
+#define NEW_TEST(type, name, node_cnt)                                                             \
+    _internal_new_test(                                                                            \
+        type,                                                                                      \
+        name,                                                                                      \
+        __shamrock_unique_name(test_func_),                                                        \
+        __shamrock_unique_name(test_func_ptr_),                                                    \
+        __shamrock_unique_name(test_class_),                                                       \
+        node_cnt)
 
 /**
  * @brief Macro to write stuff to the tex test report
@@ -218,9 +231,9 @@ namespace shamtest::details {
             shamtest::asserts().assert_bool_with_log(                                              \
                 assert_name,                                                                       \
                 eval,                                                                              \
-                assert_name + " evaluated to false\n\n"                                            \
-                    + shambase::format(" -> " #_a " = {}", _______a) + "\n"                        \
-                    + shambase::format(" -> " #_b " = {}", _______b) + "\n"                        \
+                assert_name + " evaluated to false\n\n" + " -> " #_a                               \
+                    + sham::format(" = {}", _______a) + "\n" + " -> " #_b                          \
+                    + sham::format(" = {}", _______b) + "\n"                                       \
                     + " -> location : " + SourceLocation{}.format_one_line());                     \
         }                                                                                          \
     } while (0)
@@ -262,9 +275,9 @@ namespace shamtest::details {
             shamtest::asserts().assert_bool_with_log(                                              \
                 assert_name,                                                                       \
                 eval,                                                                              \
-                assert_name + " evaluated to false\n\n" + shambase::format(" -> " #_a " = {}", a)  \
-                    + "\n" + shambase::format(" -> " #_b " = {}", b) + "\n"                        \
-                    + shambase::format(" -> " #prec " = {}", prec) + "\n"                          \
+                assert_name + " evaluated to false\n\n" + sham::format(" -> " #_a " = {}", a)      \
+                    + "\n" + sham::format(" -> " #_b " = {}", b) + "\n"                            \
+                    + sham::format(" -> " #prec " = {}", prec) + "\n"                              \
                     + " -> location : " + SourceLocation{}.format_one_line());                     \
         }                                                                                          \
     } while (0)

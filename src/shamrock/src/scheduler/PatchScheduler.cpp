@@ -18,10 +18,10 @@
 #include "shambase/stacktrace.hpp"
 #include "shambase/string.hpp"
 #include "shambase/time.hpp"
+#include "nlohmann/json.hpp"
 #include "shambackends/math.hpp"
 #include "shambackends/typeAliasVec.hpp"
 #include "shamrock/legacy/patch/base/patchdata.hpp"
-#include "shamrock/legacy/patch/base/patchdata_field.hpp"
 #include "shamrock/patch/PatchDataLayerLayout.hpp"
 #include "shamrock/scheduler/HilbertLoadBalance.hpp"
 #include "shamrock/scheduler/PatchScheduler.hpp"
@@ -212,8 +212,8 @@ PatchScheduler::PatchScheduler(
     u64 crit_merge)
     : pdl_ptr(pdl_ptr),
       patch_data(
-          pdl_ptr,
-          {{0, 0, 0}, {max_axis_patch_coord, max_axis_patch_coord, max_axis_patch_coord}}) {
+          pdl_ptr, {{0, 0, 0}, {max_axis_patch_coord, max_axis_patch_coord, max_axis_patch_coord}}),
+      synchronized_data() {
 
     crit_patch_split = crit_split;
     crit_patch_merge = crit_merge;
@@ -334,46 +334,45 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
                 f64 total       = global_timer.nanosec;
                 std::string str = "";
                 str += "Scheduler step timings : ";
-                str += shambase::format(
+                str += sham::format(
                     "\n   metadata sync     : {:<10} ({:2.1f}%)",
                     metadata_sync.get_time_str(),
                     f64(100 * (metadata_sync.nanosec / total)));
                 if (patch_tree_count_reduce) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   patch tree reduce : {:<10} ({:2.1f}%)",
                         patch_tree_count_reduce->get_time_str(),
                         100 * (patch_tree_count_reduce->nanosec / total));
                 }
                 if (gen_merge_split_rq) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   gen split merge   : {:<10} ({:2.1f}%)",
                         gen_merge_split_rq->get_time_str(),
                         100 * (gen_merge_split_rq->nanosec / total));
                 }
                 if (split_merge_cnt) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   split / merge op  : {}/{}",
                         split_merge_cnt->x(),
                         split_merge_cnt->y());
                 }
                 if (apply_splits) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   apply split merge : {:<10} ({:2.1f}%)",
                         apply_splits->get_time_str(),
                         100 * (apply_splits->nanosec / total));
                 }
                 if (load_balance_compute) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   LB compute        : {:<10} ({:2.1f}%)",
                         load_balance_compute->get_time_str(),
                         100 * (load_balance_compute->nanosec / total));
                 }
                 if (load_balance_move_op_cnt) {
-                    str += shambase::format(
-                        "\n   LB move op cnt    : {}", *load_balance_move_op_cnt);
+                    str += sham::format("\n   LB move op cnt    : {}", *load_balance_move_op_cnt);
                 }
                 if (load_balance_apply) {
-                    str += shambase::format(
+                    str += sham::format(
                         "\n   LB apply          : {:<10} ({:2.1f}%)",
                         load_balance_apply->get_time_str(),
                         100 * (load_balance_apply->nanosec / total));
@@ -389,7 +388,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
 
     timers.metadata_sync.start();
     patch_list.build_global();
-    timers.metadata_sync.end();
+    timers.metadata_sync.stop();
 
     // std::cout << dump_status();
 
@@ -404,7 +403,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         timers.global_idx_map_build->start(); // TODO check if it it used outside of split merge ->
                                               // maybe need to be put before the if
         patch_list.build_global_idx_map();
-        timers.global_idx_map_build->end();
+        timers.global_idx_map_build->stop();
 
         // std::cout << dump_status() << std::endl;
 
@@ -412,7 +411,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         timers.patch_tree_count_reduce = shambase::Timer{};
         timers.patch_tree_count_reduce->start();
         patch_tree.partial_values_reduction(patch_list.global, patch_list.id_patch_to_global_idx);
-        timers.patch_tree_count_reduce->end();
+        timers.patch_tree_count_reduce->stop();
 
         // std::cout << dump_status() << std::endl;
 
@@ -421,7 +420,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         timers.gen_merge_split_rq->start();
         split_rq = patch_tree.get_split_request(crit_patch_split);
         merge_rq = patch_tree.get_merge_request(crit_patch_merge);
-        timers.gen_merge_split_rq->end();
+        timers.gen_merge_split_rq->stop();
 
         timers.split_merge_cnt = u32_2{split_rq.size(), merge_rq.size()};
         /*
@@ -444,7 +443,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         timers.apply_splits = shambase::Timer{};
         timers.apply_splits->start();
         split_patches(split_rq);
-        timers.apply_splits->end();
+        timers.apply_splits->stop();
 
         // std::cout << dump_status() << std::endl;
 
@@ -461,7 +460,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         // generate LB change list
         shamrock::scheduler::LoadBalancingChangeList change_list
             = LoadBalancer::make_change_list(patch_list.global);
-        timers.load_balance_compute->end();
+        timers.load_balance_compute->stop();
 
         timers.load_balance_move_op_cnt = change_list.change_ops.size();
 
@@ -469,7 +468,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
         timers.load_balance_apply->start();
         // apply LB change list
         patch_data.apply_change_list(change_list, patch_list);
-        timers.load_balance_apply->end();
+        timers.load_balance_apply->stop();
     }
 
     // std::cout << dump_status();
@@ -495,7 +494,7 @@ void PatchScheduler::scheduler_step(bool do_split_merge, bool do_load_balancing)
 
     // std::cout << dump_status();
 
-    timers.global_timer.end();
+    timers.global_timer.stop();
     timers.print_stats();
 }
 
@@ -527,7 +526,7 @@ void SchedulerMPI::scheduler_step(bool do_split_merge,bool do_load_balancing){
         split_patches(split_rq);
 
         // update packing index
-        // same operation on evey cluster nodes
+        // same operation on every cluster nodes
         set_patch_pack_values(merge_rq);
 
         // update patch list
@@ -597,9 +596,9 @@ std::string PatchScheduler::dump_status() {
            << " [" << p.coord_min[2] << "," << p.coord_max[2] << "] )\n";
     }
 
-    ss << shambase::format(
+    ss << sham::format(
         "patch_list.id_patch_to_global_idx :\n{}\n", patch_list.id_patch_to_global_idx);
-    ss << shambase::format(
+    ss << sham::format(
         "patch_list.id_patch_to_local_idx :\n{}\n", patch_list.id_patch_to_local_idx);
 
     ss << " -> SchedulerPatchData\n";
@@ -622,7 +621,7 @@ std::string PatchScheduler::dump_status() {
     ss << " -> SchedulerPatchTree\n";
 
     for (auto &[k, pnode] : patch_tree.tree) {
-        ss << shambase::format(
+        ss << sham::format(
             "      -> id : {} -> ({}) <=> {} [{}, {}] (cl={} il={} l={} pid={})\n",
             k,
             pnode.tree_node.childs_nid,
@@ -642,16 +641,16 @@ std::string PatchScheduler::format_patch_coord(shamrock::patch::Patch p) {
     std::string ret;
     if (pdl_old().check_main_field_type<f32_3>()) {
         auto [bmin, bmax] = patch_data.sim_box.patch_coord_to_domain<f32_3>(p);
-        ret               = shambase::format("coord = {} {}", bmin, bmax);
+        ret               = sham::format("coord = {} {}", bmin, bmax);
     } else if (pdl_old().check_main_field_type<f64_3>()) {
         auto [bmin, bmax] = patch_data.sim_box.patch_coord_to_domain<f64_3>(p);
-        ret               = shambase::format("coord = {} {}", bmin, bmax);
+        ret               = sham::format("coord = {} {}", bmin, bmax);
     } else if (pdl_old().check_main_field_type<u32_3>()) {
         auto [bmin, bmax] = patch_data.sim_box.patch_coord_to_domain<u32_3>(p);
-        ret               = shambase::format("coord = {} {}", bmin, bmax);
+        ret               = sham::format("coord = {} {}", bmin, bmax);
     } else if (pdl_old().check_main_field_type<u64_3>()) {
         auto [bmin, bmax] = patch_data.sim_box.patch_coord_to_domain<u64_3>(p);
-        ret               = shambase::format("coord = {} {}", bmin, bmax);
+        ret               = sham::format("coord = {} {}", bmin, bmax);
     } else {
         throw shambase::make_except_with_loc<std::runtime_error>(
             "the main field does not match any");
@@ -675,11 +674,11 @@ void check_locality_t(PatchScheduler &sched) {
             },
             bmin_p0,
             bmax_p0,
-            shambase::format("patch id = {}", pid));
+            sham::format("patch id = {}", pid));
     });
 }
 
-void PatchScheduler::check_patchdata_locality_corectness() {
+void PatchScheduler::check_patchdata_locality_correctness() {
 
     StackEntry stack_loc{};
 
@@ -975,10 +974,10 @@ std::vector<std::unique_ptr<shamrock::patch::PatchDataLayer>> PatchScheduler::ga
 
             send_payloads.push_back(
                 Message{
-                    std::make_unique<shamcomm::CommunicationBuffer>(
+                    .buf = std::make_unique<shamcomm::CommunicationBuffer>(
                         std::move(tmp), shamsys::instance::get_compute_scheduler_ptr()),
-                    0,
-                    i32(i)});
+                    .rank = 0,
+                    .tag  = i32(i)});
         }
     }
 
@@ -991,9 +990,9 @@ std::vector<std::unique_ptr<shamrock::patch::PatchDataLayer>> PatchScheduler::ga
         for (u32 i = 0; i < plist.size(); i++) {
             recv_payloads.push_back(
                 Message{
-                    std::unique_ptr<shamcomm::CommunicationBuffer>{},
-                    i32(plist[i].node_owner_id),
-                    i32(i)});
+                    .buf  = std::unique_ptr<shamcomm::CommunicationBuffer>{},
+                    .rank = i32(plist[i].node_owner_id),
+                    .tag  = i32(i)});
         }
     }
 
@@ -1027,5 +1026,6 @@ nlohmann::json PatchScheduler::serialize_patch_metadata() {
         {"patchdata_layout", pdl_old()},
         {"sim_box", jsim_box},
         {"crit_patch_split", crit_patch_split},
-        {"crit_patch_merge", crit_patch_merge}};
+        {"crit_patch_merge", crit_patch_merge},
+        {"synchronized_data", synchronized_data}};
 }

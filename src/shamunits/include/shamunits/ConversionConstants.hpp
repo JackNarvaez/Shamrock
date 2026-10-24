@@ -29,6 +29,8 @@ namespace shamunits {
         static constexpr T rsol_to_m   = 6.957e8;          //(m)
         static constexpr T rearth_to_m = 6.378137e6;       // Earth equatorial radius (m)
 
+        static constexpr T sol_mass_to_kg = 1.98847e30; //(kg)
+
         static constexpr T mn_to_s  = 60;            //(s)
         static constexpr T hr_to_s  = 3600;          //(s)
         static constexpr T dy_to_s  = 24 * hr_to_s;  //(s)
@@ -43,10 +45,10 @@ namespace shamunits {
 
         static constexpr T litre_to_pint = 0.568;
 
-        /// We first want to thanks E. Lynch for his usefull contribution to the devellopement of
-        ///    numerical methods and new standard of measurment
+        /// We first want to thanks E. Lynch for his useful contribution to the devellopement of
+        ///    numerical methods and new standard of measurement
         /// \verbatim
-        /// todo find a more precise measurment of the guiness density (shall be done in ireland)
+        /// todo find a more precise measurement of the Guinness density (shall be done in Ireland)
         /// protocol :
         ///  1 - start by ordering the most precise pint of guiness (in ireland)
         ///  2 - weight the pint
@@ -76,6 +78,9 @@ namespace shamunits {
  *
  * @fn shamunits::ConversionConstants::rearth_to_m()
  * @brief conversion factor from earth equatorial radii to meters
+ *
+ * @fn shamunits::ConversionConstants::sol_mass_to_kg()
+ * @brief conversion factor from solar masses to kilograms
  *
  * @fn shamunits::ConversionConstants::mn_to_s()
  * @brief conversion factor from minutes to seconds

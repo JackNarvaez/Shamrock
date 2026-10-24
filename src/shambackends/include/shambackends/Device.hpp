@@ -91,6 +91,12 @@ namespace sham {
         /// The type of the device
         DeviceType type;
 
+        /// The name of the device
+        std::string name;
+
+        /// The name of the platform of the device
+        std::string platform;
+
         /// The amount of global memory on the device in bytes
         usize global_mem_size;
 
@@ -105,6 +111,9 @@ namespace sham {
 
         /// The number of compute units on the device
         uint32_t max_compute_units;
+
+        /// The maximum work-group size supported by the device
+        size_t max_work_group_size;
 
         /// The maximum size of memory that can be allocated on the device in bytes
         uint64_t max_mem_alloc_size_dev;

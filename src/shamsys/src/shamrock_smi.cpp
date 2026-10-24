@@ -16,13 +16,15 @@
 #include "shambase/memory.hpp"
 #include "shambase/numeric_limits.hpp"
 #include "shambase/string.hpp"
+#include "shambase/time.hpp"
+#include "shamalgs/collective/gather_str.hpp"
 #include "shamalgs/collective/reduction.hpp"
+#include "shamalgs/collective/string_histogram.hpp"
 #include "shambackends/Device.hpp"
 #include "shambackends/sycl.hpp"
 #include "shambackends/sycl_utils.hpp"
 #include "shamcmdopt/cmdopt.hpp"
 #include "shamcmdopt/env.hpp"
-#include "shamcomm/collectives.hpp"
 #include "shamcomm/logs.hpp"
 #include "shamcomm/worldInfo.hpp"
 #include "shamsys/NodeInstance.hpp"
@@ -31,6 +33,13 @@
 #include <functional>
 #include <string>
 #include <vector>
+
+namespace {
+    static bool SHAMROCK_SMI_USE_HASH
+        = shamcmdopt::getenv_str_default_register(
+              "SHAMROCK_SMI_USE_HASH", "1", "use hash based string histogram for shamrock --smi")
+          == "1";
+}
 
 namespace shamsys {
 
@@ -71,7 +80,7 @@ namespace shamsys {
             f64 mem            = device.prop.global_mem_size;
             std::string memstr = shambase::readable_sizeof(mem);
 
-            nodeconfig += shambase::format(
+            nodeconfig += sham::format(
                               "| {:>2} | {:>25.25} | {:>22.22} | {:>6} | {:>12} | {:>5} | ",
                               key_global,
                               devname,
@@ -83,14 +92,14 @@ namespace shamsys {
         });
 
         std::unordered_map<std::string, int> nodeconfig_histogram
-            = shamcomm::string_histogram({nodeconfig}, "@#%");
+            = shamalgs::collective::string_histogram({nodeconfig}, "@#%", SHAMROCK_SMI_USE_HASH);
 
         if (rank == 0) {
             std::string print = "Available devices :\n";
             for (auto &[node_conf, count] : nodeconfig_histogram) {
                 std::string arr = "";
-                add_array(arr, shambase::format("{} x Shamrock process: ", count), node_conf);
-                print += shambase::format("\n{}\n", arr);
+                add_array(arr, sham::format("{} x Shamrock process: ", count), node_conf);
+                print += sham::format("\n{}\n", arr);
             }
             printf("%s", print.data());
         }
@@ -119,7 +128,7 @@ namespace shamsys {
             f64 mem            = device.prop.global_mem_size;
             std::string memstr = shambase::readable_sizeof(mem);
 
-            print_buf += shambase::format(
+            print_buf += sham::format(
                              "| {:>4} | {:>2} | {:>25.25} | {:>22.22} | {:>6} | {:>12} | {:>5} | ",
                              rank,
                              key_global,
@@ -132,7 +141,7 @@ namespace shamsys {
         });
 
         std::string recv;
-        shamcomm::gather_str(print_buf, recv);
+        shamalgs::collective::gather_str(print_buf, recv);
         if (rank == 0) {
             std::string print = "Available devices :\n";
             print += ("----------------------------------------------------------------------------"
@@ -163,7 +172,7 @@ namespace shamsys {
             sham::Device &dev
                 = shambase::get_check_ref(instance::get_compute_scheduler().ctx->device);
 
-            std::string DeviceName = dev.dev.get_info<sycl::info::device::name>();
+            std::string DeviceName = dev.prop.name;
 
             auto nolimit_if_too_large = [](u64 sz) -> std::string {
                 if (sz < u32_max) {
@@ -173,7 +182,7 @@ namespace shamsys {
                 }
             };
 
-            std::string dev_with_id = shambase::format(
+            std::string dev_with_id = sham::format(
                 R"({} (id={})
           - default_work_group_size = {}
           - global_mem_size = {}
@@ -195,12 +204,13 @@ namespace shamsys {
             if (!dev.prop.warnings.empty()) {
                 dev_with_id += "\n      - Warnings:";
                 for (auto &warning : dev.prop.warnings) {
-                    dev_with_id += shambase::format("\n          - {}", warning);
+                    dev_with_id += sham::format("\n          - {}", warning);
                 }
             }
 
             std::unordered_map<std::string, int> devicename_histogram
-                = shamcomm::string_histogram({dev_with_id}, "xxx\nxxx");
+                = shamalgs::collective::string_histogram(
+                    {dev_with_id}, "xxx\nxxx", SHAMROCK_SMI_USE_HASH);
 
             f64 mem           = dev.prop.global_mem_size;
             u64 compute_units = dev.prop.max_compute_units;
@@ -214,7 +224,7 @@ namespace shamsys {
                                     "ranks per device)\n";
 
                 for (auto &[key, value] : devicename_histogram) {
-                    print += shambase::format("  - {} x {}", value, key) + "\n";
+                    print += sham::format("  - {} x {}", value, key) + "\n";
                 }
                 print += "  Total memory : " + shambase::readable_sizeof(total_mem) + "\n";
                 print += "  Total compute units : " + std::to_string(n_compute_units) + "\n";
@@ -229,6 +239,10 @@ namespace shamsys {
             logger::raw_ln(" ----- Shamrock SMI ----- \n");
         }
 
+        shambase::Timer timer;
+        shamcomm::mpi::Barrier(MPI_COMM_WORLD);
+        timer.start();
+
         if (list_all_devices) {
             shamrock_smi_all();
         } else {
@@ -236,6 +250,17 @@ namespace shamsys {
         }
 
         shamrock_smi_selected(list_all_devices);
+
+        shamcomm::mpi::Barrier(MPI_COMM_WORLD);
+        timer.stop();
+        if (shamcomm::world_rank() == 0) {
+            logger::info_ln(
+                "shamsys",
+                "shamrock_smi time:",
+                timer.get_time_str(),
+                "| hash based:",
+                SHAMROCK_SMI_USE_HASH ? "yes" : "no");
+        }
     }
 
 } // namespace shamsys

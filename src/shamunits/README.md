@@ -4,7 +4,7 @@ This is the units library in use in the Shamrock code, this repository will be u
 
 Almost everything is marked `constexpr` in the library, so most of the conversion if possible will be opmitized away by the compiler, allowing for zero cost abstraction here :)
 
-Here is an exemple of the usage of the units library :
+Here is an example of the usage of the units library :
 ```c++
 #include <iostream>
 #include <shamunits/Constants.hpp>
@@ -19,7 +19,7 @@ int main(void){
 
     // get the value of au^2 in the unit system
     // but it is quite big :)
-    std::cout << si.get<units::astronomical_unit,2>() << std::endl;
+    std::cout << si.get<legacy_units::astronomical_unit,2>() << std::endl;
 
     double sol_mass = Constants<double>(si).sol_mass();
 
@@ -27,25 +27,25 @@ int main(void){
     * create a unit system with time in Myr, length in au, mass in solar masses
     */
     UnitSystem<double> astro_units {
-        si.get<mega, units::years>(),
-        si.get<units::astronomical_unit>(),
-        si.get<units::kilogram>()*sol_mass,
+        si.get<mega, legacy_units::years>(),
+        si.get<legacy_units::astronomical_unit>(),
+        si.get<legacy_units::kilogram>()*sol_mass,
     };
 
     //this time it returns 1 because the base length is the astronomical unit
-    std::cout << astro_units.get<units::astronomical_unit,2>() << std::endl;
+    std::cout << astro_units.get<legacy_units::astronomical_unit,2>() << std::endl;
 
     Constants<double> astro_cte {astro_units};
 
-    // in those units G is 3.94781e+25
+    // in those units G is 3.94781e+13
     std::cout << astro_cte.G() << std::endl;
 
     //now if the code return a value in astro_units
     //we can convert it to any units like so
     double value = 12; //here 12 Myr
 
-    // print : value = 3.15576e+19 s
-    std::cout << "value = "<< astro_units.to<units::second>() << " s"<< std::endl;
+    // print : value = 3.15576e+13 s
+    std::cout << "value = "<< astro_units.to<legacy_units::second>() << " s"<< std::endl;
 
 }
 

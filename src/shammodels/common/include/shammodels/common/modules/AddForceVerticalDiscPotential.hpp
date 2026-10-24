@@ -18,10 +18,10 @@
 
 #include "shambackends/kernel_call_distrib.hpp"
 #include "shambackends/vec.hpp"
-#include "shamrock/solvergraph/IDataEdge.hpp"
 #include "shamrock/solvergraph/IFieldSpan.hpp"
-#include "shamrock/solvergraph/INode.hpp"
 #include "shamrock/solvergraph/Indexes.hpp"
+#include "shamsolvergraph/edge/IDataEdge.hpp"
+#include "shamsolvergraph/node/INode.hpp"
 #include "shamsys/NodeInstance.hpp"
 
 /// declare the list of edges for this node
@@ -67,8 +67,8 @@ namespace shammodels::common::modules {
                 sham::DDMultiRef{edges.spans_accel_ext.get_spans()},
                 edges.sizes.indexes,
                 [mGM = -cmass * G, R02 = R0 * R0](u32 gid, const Tvec *xyz, Tvec *axyz_ext) {
-                    Tscal y_a = xyz[gid].y();
-                    axyz_ext[gid].y() += mGM * y_a / sycl::sqrt(R02 + y_a * y_a);
+                    Tscal z_a = xyz[gid].z();
+                    axyz_ext[gid].z() += mGM * z_a / sycl::sqrt(R02 + z_a * z_a);
                 });
         }
 

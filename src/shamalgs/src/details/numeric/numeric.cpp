@@ -33,7 +33,7 @@ namespace shamalgs::numeric {
 
     template<class T>
     sycl::buffer<T> scan_exclusive(sycl::queue &q, sycl::buffer<T> &buf1, u32 len) {
-#ifdef __MACH__ // decoupled lookback perf on mac os is awfull
+#ifdef __MACH__ // decoupled lookback perf on mac os is awful
         return details::exclusive_sum_fallback(q, buf1, len);
 #else
     #ifdef SYCL2020_FEATURE_GROUP_REDUCTION
@@ -47,7 +47,7 @@ namespace shamalgs::numeric {
     template<class T>
     sham::DeviceBuffer<T> scan_exclusive(
         sham::DeviceScheduler_ptr sched, sham::DeviceBuffer<T> &buf1, u32 len) {
-#ifdef __MACH__ // decoupled lookback perf on mac os is awfull
+#ifdef __MACH__ // decoupled lookback perf on mac os is awful
         return details::exclusive_sum_fallback_usm(sched, buf1, len);
 #else
     #ifdef SYCL2020_FEATURE_GROUP_REDUCTION
@@ -58,28 +58,9 @@ namespace shamalgs::numeric {
 #endif
     }
 
-    template<class T>
-    sycl::buffer<T> scan_inclusive(sycl::queue &q, sycl::buffer<T> &buf1, u32 len) {
-        return details::inclusive_sum_fallback(q, buf1, len);
-    }
-
-    template<class T>
-    void scan_exclusive_in_place(sycl::queue &q, sycl::buffer<T> &buf1, u32 len) {
-        buf1 = details::exclusive_sum_atomic_decoupled_v5<T, 256>(q, buf1, len);
-    }
-
-    template<class T>
-    void scan_inclusive_in_place(sycl::queue &q, sycl::buffer<T> &buf1, u32 len) {
-        buf1 = details::inclusive_sum_fallback(q, buf1, len);
-    }
-
     template sycl::buffer<u32> scan_exclusive(sycl::queue &q, sycl::buffer<u32> &buf1, u32 len);
     template sham::DeviceBuffer<u32> scan_exclusive(
         sham::DeviceScheduler_ptr sched, sham::DeviceBuffer<u32> &buf1, u32 len);
-    template sycl::buffer<u32> scan_inclusive(sycl::queue &q, sycl::buffer<u32> &buf1, u32 len);
-
-    template void scan_exclusive_in_place(sycl::queue &q, sycl::buffer<u32> &buf1, u32 len);
-    template void scan_inclusive_in_place(sycl::queue &q, sycl::buffer<u32> &buf1, u32 len);
 
     std::tuple<std::optional<sycl::buffer<u32>>, u32> stream_compact(
         sycl::queue &q, sycl::buffer<u32> &buf_flags, u32 len) {
@@ -287,7 +268,8 @@ namespace shamalgs::numeric {
 
             // how to be a patate? Resize buffers to diligently become powers of 2, and don't update
             // the variable holding their length
-            shamalgs::algorithm::sort_by_key(sched, valid_keys, valid_values, pow2_len_key);
+            shamalgs::algorithm::sort_by_key_pow2_len(
+                sched, valid_keys, valid_values, pow2_len_key);
         }
 
         return {std::move(valid_values), std::move(offsets_bins)};

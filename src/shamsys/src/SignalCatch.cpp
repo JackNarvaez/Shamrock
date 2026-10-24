@@ -15,8 +15,8 @@
 
 #include "shambase/exception.hpp"
 #include "shambase/stacktrace.hpp"
+#include "sham/term/tty.hpp"
 #include "shamcmdopt/env.hpp"
-#include "shamcmdopt/tty.hpp"
 #include "shamsys/NodeInstance.hpp"
 #include "shamsys/legacy/log.hpp"
 #include "shamsys/stacktrace_log.hpp"
@@ -97,7 +97,7 @@ namespace shamsys::details {
             outfile << report << std::endl;
             outfile << log_end << std::endl;
             outfile.close();
-            std::cout << shambase::format(
+            std::cout << sham::format(
                 "{}"
                 "Crash report written to {}",
                 log_start,

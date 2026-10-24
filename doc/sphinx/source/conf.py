@@ -22,7 +22,7 @@ import shamrock
 # -- Project information -----------------------------------------------------
 
 # start allow utf-8
-project = "python bindings"
+project = "Documentation"
 copyright = f"2020 -- {datetime.datetime.now().year} Timothee David--Cléris"
 author = "Timothee David--Cléris"
 # end allow utf-8
@@ -43,6 +43,8 @@ extensions = [
     "sphinx_gallery.gen_gallery",  # generate thumbnail and example lib
     "sphinx_copybutton",  # add a copy button to code blocks
     "sphinx_design",  # Add grid tabs and fancy html stuff
+    "myst_parser",  # Allow markdown files
+    "sphinx.ext.graphviz",  # Allow graphviz diagrams
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -69,6 +71,7 @@ sphinx_gallery_conf = {
     "examples_dirs": "../examples",  # path to your example scripts
     "gallery_dirs": "_as_gen",  # path to where to save gallery generated output
     "line_numbers": True,  # line numbers in examples
+    "capture_repr": ("_repr_html_", "__repr__"),
     # The 3 next args are a bit like dark magic which allows the link
     # to functions in the example to exist
     "reference_url": {"shamrock": None},
@@ -84,6 +87,20 @@ sphinx_gallery_conf = {
     "matplotlib_animations": (True, "mp4"),
     "parallel": False,
 }
+
+myst_enable_extensions = [
+    "amsmath",
+    "colon_fence",
+    "deflist",
+    "dollarmath",
+    "fieldlist",
+    "html_admonition",
+    "html_image",
+    "replacements",
+    "smartquotes",
+    "substitution",
+    "tasklist",
+]
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -119,6 +136,8 @@ html_theme_options = {
             "type": "local",
         },
     ],
+    "pygments_light_style": "gruvbox-light",
+    "pygments_dark_style": "gruvbox-dark",
 }
 
 html_context = {

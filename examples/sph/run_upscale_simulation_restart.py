@@ -14,6 +14,11 @@ if not shamrock.sys.is_initialized():
     shamrock.sys.init("0:0")
 
 # %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+
+# %%
 # Setup parameters
 
 gamma = 5.0 / 3.0
@@ -24,7 +29,7 @@ bmax = (0.6, 0.6, 0.6)
 
 N_target = 1e4
 scheduler_split_val = int(2e7)
-scheduler_merge_val = int(1)
+scheduler_merge_val = 1
 
 # %%
 # Deduced quantities
@@ -62,7 +67,7 @@ cfg.print_status()
 model.set_solver_config(cfg)
 model.init_scheduler(scheduler_split_val, scheduler_merge_val)
 
-bmin, bmax = model.get_ideal_hcp_box(dr, bmin, bmax)
+bmin, bmax = shamrock.math.get_ideal_hcp_box(dr, bmin, bmax)
 xm, ym, zm = bmin
 xM, yM, zM = bmax
 
@@ -175,5 +180,8 @@ sc = ax.scatter(
     c=dat["hpart"],
     cmap=cm,
 )
+
+ax.minorticks_off()
+
 plt.colorbar(sc)
 plt.show()

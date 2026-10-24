@@ -61,7 +61,7 @@ namespace shammodels::sph {
             pdl.add_field<Tscal>("soundspeed", 1);
         }
 
-        if (has_field_B_on_rho()) {
+        if (has_field_b_on_rho()) {
 
             pdl.add_field<Tvec>("B/rho", 1);
             pdl.add_field<Tvec>("dB/rho", 1);
@@ -72,12 +72,16 @@ namespace shammodels::sph {
             pdl.add_field<Tscal>("psi/ch", 1);
             pdl.add_field<Tscal>("dpsi/ch", 1);
         }
-        if (has_field_divB()) {
+        if (has_field_div_b()) {
             pdl.add_field<Tscal>("divB", 1);
         }
 
-        if (has_field_curlB()) {
+        if (has_field_curl_b()) {
             pdl.add_field<Tvec>("curlB", 1);
+        }
+
+        if (do_nimhd()) {
+            pdl.add_field<Tvec>("J", 1);
         }
 
         if (dust_config.has_epsilon_field()) {
@@ -111,6 +115,15 @@ namespace shammodels::sph {
         if (should_save_dt_to_fields()) {
             pdl.add_field<Tscal>("dt_part", 1);
         }
+
+        if (dust_config.has_s_j_field()) {
+            u32 ndust = dust_config.get_dust_nvar();
+            // s_j := sqrt(rho * epsilon_j), the TVA evolved dust variable (positivity-preserving
+            // substitute for the dust fraction epsilon_j) -- see DustConfig::MonofluidTVA
+            pdl.add_field<Tscal>("s_j", ndust);
+            pdl.add_field<Tscal>("ds_j_dt", ndust);
+            pdl.add_field<Tvec>("delta_v", ndust);
+        }
     }
 
     template<class Tvec, template<class> class SPHKernel>
@@ -130,7 +143,7 @@ namespace shammodels::sph {
             ghost_layout.add_field<Tscal>("soundspeed", 1);
         }
 
-        if (has_field_B_on_rho()) {
+        if (has_field_b_on_rho()) {
             ghost_layout.add_field<Tvec>("B/rho", 1);
         }
 
@@ -138,7 +151,7 @@ namespace shammodels::sph {
             ghost_layout.add_field<Tscal>("psi/ch", 1);
         }
 
-        if (has_field_curlB()) {
+        if (has_field_curl_b()) {
             ghost_layout.add_field<Tvec>("curlB", 1);
         }
 
@@ -150,6 +163,11 @@ namespace shammodels::sph {
         if (dust_config.has_deltav_field()) {
             u32 ndust = dust_config.get_dust_nvar();
             ghost_layout.add_field<Tvec>("deltav", ndust);
+        }
+
+        if (dust_config.has_s_j_field()) {
+            u32 ndust = dust_config.get_dust_nvar();
+            ghost_layout.add_field<Tscal>("s_j", ndust);
         }
     }
 

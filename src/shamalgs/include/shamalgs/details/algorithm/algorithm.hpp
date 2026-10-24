@@ -16,7 +16,7 @@
  *
  */
 
-#include "shamalgs/primitives/sort_by_keys.hpp"
+#include "shamalgs/primitives/sort_by_key_pow2_len.hpp"
 #include "shambackends/DeviceBuffer.hpp"
 #include "shambackends/DeviceQueue.hpp"
 #include "shambackends/sycl.hpp"
@@ -31,6 +31,8 @@ namespace shamalgs::algorithm {
     /**
      * @brief Sort the buffer according to the key order
      *
+     * @note len must be a power of 2
+     *
      * @tparam T
      * @param q
      * @param buf_key
@@ -38,18 +40,18 @@ namespace shamalgs::algorithm {
      * @param len
      */
     template<class Tkey, class Tval>
-    void sort_by_key(
+    void sort_by_key_pow2_len(
         sycl::queue &q, sycl::buffer<Tkey> &buf_key, sycl::buffer<Tval> &buf_values, u32 len) {
-        shamalgs::primitives::sort_by_key(q, buf_key, buf_values, len);
+        shamalgs::primitives::sort_by_key_pow2_len(q, buf_key, buf_values, len);
     }
 
     template<class Tkey, class Tval>
-    void sort_by_key(
+    void sort_by_key_pow2_len(
         const sham::DeviceScheduler_ptr &sched,
         sham::DeviceBuffer<Tkey> &buf_key,
         sham::DeviceBuffer<Tval> &buf_values,
         u32 len) {
-        shamalgs::primitives::sort_by_key(sched, buf_key, buf_values, len);
+        shamalgs::primitives::sort_by_key_pow2_len(sched, buf_key, buf_values, len);
     }
 
     /**
@@ -95,27 +97,6 @@ namespace shamalgs::algorithm {
     template<class T>
     sycl::buffer<T> index_remap(
         sycl::queue &q, sycl::buffer<T> &source_buf, sycl::buffer<u32> &index_map, u32 len);
-
-    /**
-     * @brief remap a buffer (with multiple variable per index) according to a given index map
-     * result[i] = result[index_map[i]]
-     *
-     * This function can be used to apply a sort to another object
-     *
-     * @tparam T type of the buffer
-     * @param q the sycl queue
-     * @param buf the buffer to apply the remapping on
-     * @param index_map the index map
-     * @param len length of the index map
-     * @param nvar the number of variable per index
-     */
-    template<class T>
-    sycl::buffer<T> index_remap_nvar(
-        sycl::queue &q,
-        sycl::buffer<T> &source_buf,
-        sycl::buffer<u32> &index_map,
-        u32 len,
-        u32 nvar);
 
     template<class T>
     void index_remap(

@@ -16,12 +16,15 @@
 #include "shamtree/MortonCodeSet.hpp"
 #include "shamtree/MortonCodeSortedSet.hpp"
 #include "shamtree/MortonReducedSet.hpp"
+#include "tests/shamtree/tie_order_utils.hpp"
 #include <vector>
+
+using shamtree::test_utils::sort_ties;
 
 using Tvec    = f64_3;
 using Tmorton = u64;
 
-TestStart(Unittest, "shamtree/KarrasRadixTreeAABB", test_karras_radix_tree_aabb, 1) {
+NEW_TEST(Unittest, "shamtree/KarrasRadixTreeAABB", 1) {
 
     std::vector<Tvec> partpos{
         Tvec(0.0, 0.0, 0.0),
@@ -174,7 +177,9 @@ TestStart(Unittest, "shamtree/KarrasRadixTreeAABB", test_karras_radix_tree_aabb,
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.get_size(), 16);
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.copy_to_stdvec(), test_mortons_sorted);
     REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.get_size(), 16);
-    REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), index_map_obj_idx);
+    REQUIRE_EQUAL(
+        sort_ties(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 
     auto reduced_set = shamtree::reduce_morton_set(
         shamsys::instance::get_compute_scheduler_ptr(), std::move(sorted_set), 1);
@@ -186,7 +191,10 @@ TestStart(Unittest, "shamtree/KarrasRadixTreeAABB", test_karras_radix_tree_aabb,
         reduced_set.morton_codes_set.sorted_morton_codes.copy_to_stdvec(), test_mortons_sorted);
     REQUIRE_EQUAL(reduced_set.morton_codes_set.map_morton_id_to_obj_id.get_size(), 16);
     REQUIRE_EQUAL(
-        reduced_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(), index_map_obj_idx);
+        sort_ties(
+            reduced_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(),
+            test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 
     REQUIRE_EQUAL(reduced_set.reduce_code_count, 6);
     REQUIRE_EQUAL(reduced_set.reduced_morton_codes.get_size(), 6);
@@ -238,8 +246,7 @@ TestStart(Unittest, "shamtree/KarrasRadixTreeAABB", test_karras_radix_tree_aabb,
     REQUIRE_EQUAL_CUSTOM_COMP(ret_aabb_max, aabb_max, vec_equals);
 }
 
-TestStart(
-    Unittest, "shamtree/KarrasRadixTreeAABB(one-cell)", test_karras_radix_tree_aabb_one_cell, 1) {
+NEW_TEST(Unittest, "shamtree/KarrasRadixTreeAABB(one-cell)", 1) {
 
     std::vector<Tvec> partpos{
         Tvec(0.0, 0.0, 0.0),
@@ -332,7 +339,9 @@ TestStart(
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.get_size(), 16);
     REQUIRE_EQUAL(sorted_set.sorted_morton_codes.copy_to_stdvec(), test_mortons_sorted);
     REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.get_size(), 16);
-    REQUIRE_EQUAL(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), index_map_obj_idx);
+    REQUIRE_EQUAL(
+        sort_ties(sorted_set.map_morton_id_to_obj_id.copy_to_stdvec(), test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 
     auto reduced_set = shamtree::reduce_morton_set(
         shamsys::instance::get_compute_scheduler_ptr(), std::move(sorted_set), 5);
@@ -344,7 +353,10 @@ TestStart(
         reduced_set.morton_codes_set.sorted_morton_codes.copy_to_stdvec(), test_mortons_sorted);
     REQUIRE_EQUAL(reduced_set.morton_codes_set.map_morton_id_to_obj_id.get_size(), 16);
     REQUIRE_EQUAL(
-        reduced_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(), index_map_obj_idx);
+        sort_ties(
+            reduced_set.morton_codes_set.map_morton_id_to_obj_id.copy_to_stdvec(),
+            test_mortons_sorted),
+        sort_ties(index_map_obj_idx, test_mortons_sorted));
 
     REQUIRE_EQUAL(reduced_set.reduce_code_count, 1);
     REQUIRE_EQUAL(reduced_set.reduced_morton_codes.get_size(), 1);

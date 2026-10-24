@@ -7,6 +7,7 @@
 //
 // -------------------------------------------------------//
 
+#include "shambase/string.hpp"
 #include "shambase/time.hpp"
 #include "shamcomm/logs.hpp"
 #include "shamsys/NodeInstance.hpp"
@@ -69,7 +70,7 @@ void bench(std::vector<f64> &sep, std::vector<f64> &measured_bw) {
         "/s");
 }
 
-TestStart(Benchmark, "memory-pointer-div-perf", memorypointerdivperf, 1) {
+NEW_TEST(Benchmark, "memory-pointer-div-perf", 1) {
 
     using T = double;
 

@@ -16,6 +16,12 @@ if not shamrock.sys.is_initialized():
     shamrock.change_loglevel(1)
     shamrock.sys.init("0:0")
 
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
+# %%
+# Setup parameters
 gamma = 1.4
 
 rho_g = 1
@@ -32,6 +38,8 @@ vortex_size = 1
 
 L_green = vortex_size / (2 * np.pi)
 
+# %%
+# Setup the context, model & sim
 ctx = shamrock.Context()
 ctx.pdata_layout_new()
 
@@ -110,6 +118,9 @@ current_fig = None
 
 cnt_plot = 0
 
+# %%
+# Make plotting functions
+
 
 def plot():
     global current_fig
@@ -152,7 +163,7 @@ def plot():
     cbar = plt.colorbar(res, extend="both")
     cbar.set_label(r"$\sqrt{vx^2 + vy^2 + vz^2}$ [code unit]")
 
-    plt.title("t = {:0.3f} [code unit]".format(model.get_time()))
+    plt.title(f"t = {model.get_time():0.3f} [code unit]")
     plt.xlabel("x")
     plt.ylabel("y")
     global cnt_plot
@@ -160,6 +171,8 @@ def plot():
     cnt_plot += 1
 
 
+# %%
+# Run the simulation
 model.timestep()
 
 dt_stop = 0.001
@@ -172,5 +185,5 @@ for i in range(1):
     model.evolve_until(i * dt_stop)
 
     # Dump name is "dump_xxxx.sham" where xxxx is the timestep
-    model.do_vtk_dump(dump_folder + "/dump_{:04}.vtk".format(i), True)
+    model.do_vtk_dump(dump_folder + f"/dump_{i:04}.vtk", True)
     plot()

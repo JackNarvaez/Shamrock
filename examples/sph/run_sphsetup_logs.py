@@ -24,9 +24,9 @@ import json
 import os
 
 import matplotlib.colors as mcolors
-import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import gridspec
 
 import shamrock
 
@@ -35,6 +35,11 @@ import shamrock
 if not shamrock.sys.is_initialized():
     shamrock.change_loglevel(1)
     shamrock.sys.init("0:0")
+
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
 
 gamma = 5.0 / 3.0
 rho_g = 1
@@ -45,7 +50,7 @@ bmax = (0.6, 0.6, 0.6)
 
 N_target = 1e6
 scheduler_split_val = int(1e6 / 16)
-scheduler_merge_val = int(1)
+scheduler_merge_val = 1
 
 # render example
 """
@@ -84,7 +89,7 @@ model.set_solver_config(cfg)
 model.init_scheduler(scheduler_split_val, scheduler_merge_val)
 
 
-bmin, bmax = model.get_ideal_hcp_box(dr, bmin, bmax)
+bmin, bmax = shamrock.math.get_ideal_hcp_box(dr, bmin, bmax)
 xm, ym, zm = bmin
 xM, yM, zM = bmax
 
@@ -208,7 +213,7 @@ def print_setup_logs(filepath, name_png_prefix):
 
 # sphinx_gallery_multi_image = "single"
 
-import matplotlib.animation as animation
+from matplotlib import animation
 from shamrock.utils.plot import show_image_sequence
 
 # %%

@@ -24,9 +24,9 @@
  * - `is_all_true` for sham::DeviceBuffer: USM-based processing
  */
 
-#include "shamalgs/impl_utils.hpp"
 #include "shambackends/DeviceBuffer.hpp"
 #include "shambackends/sycl.hpp"
+#include <vector>
 
 namespace shamalgs::primitives {
 
@@ -64,7 +64,6 @@ namespace shamalgs::primitives {
      * @endcode
      */
     template<class T>
-    [[deprecated("Use is_all_true(sham::DeviceBuffer<T>&, u32) instead.")]]
     bool is_all_true(sycl::buffer<T> &buf, u32 cnt);
 
     /**
@@ -100,19 +99,5 @@ namespace shamalgs::primitives {
      */
     template<class T>
     bool is_all_true(sham::DeviceBuffer<T> &buf, u32 cnt);
-
-    /// namespace to control implementation behavior
-    namespace impl {
-
-        /// Get list of available is_all_true implementations
-        std::vector<shamalgs::impl_param> get_default_impl_list_is_all_true();
-
-        /// Get the current implementation for is_all_true
-        shamalgs::impl_param get_current_impl_is_all_true();
-
-        /// Set the implementation for is_all_true
-        void set_impl_is_all_true(const std::string &impl, const std::string &param = "");
-
-    } // namespace impl
 
 } // namespace shamalgs::primitives

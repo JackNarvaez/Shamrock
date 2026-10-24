@@ -1,11 +1,9 @@
-## -------------------------------------------------------
-##
-## SHAMROCK code for hydrodynamics
-## Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
-## SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
-## Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
-##
-## -------------------------------------------------------
+# ~~~
+# SHAMROCK code for hydrodynamics
+# Copyright (c) 2021-2026 Timothée David--Cléris <tim.shamrock@proton.me>
+# SPDX-License-Identifier: CeCILL Free Software License Agreement v2.1
+# Shamrock is licensed under the CeCILL 2.1 License, see LICENSE for more information
+# ~~~
 
 cmake_minimum_required(VERSION 3.9...3.10)
 
@@ -16,8 +14,11 @@ set(Sources
     src/pyAMRTestModel.cpp
     src/pyAMRGrid.cpp
     src/pyCommonUtils.cpp
+    src/modules/AddForcePaczynskiWiita.cpp
     src/modules/AddForceCentralGravPotential.cpp
+    src/modules/ComputeGravWave.cpp
     src/timestep_report.cpp
+    src/SolverLog.cpp
 )
 
 if(SHAMROCK_USE_SHARED_LIB)
@@ -37,6 +38,7 @@ target_link_libraries(shammodels_common PUBLIC shamphys)
 target_link_libraries(shammodels_common PUBLIC shamsys)
 target_link_libraries(shammodels_common PUBLIC nlohmann_json::nlohmann_json)
 
-target_include_directories(shammodels_common PUBLIC
-"$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>"
-"$<INSTALL_INTERFACE:include>")
+target_include_directories(
+    shammodels_common PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/include>"
+                             "$<INSTALL_INTERFACE:include>"
+)

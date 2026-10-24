@@ -31,23 +31,6 @@
 namespace shambase {
 
     /**
-     * @brief check that the size of a sycl buffer is below or equal to the value of max range
-     * throw if it is not the case
-     *
-     * @tparam T
-     * @param buf
-     * @param max_range
-     * @param loc
-     */
-    template<class T>
-    void check_buffer_size(
-        sycl::buffer<T> &buf, u64 max_range, const SourceLocation loc = SourceLocation()) {
-        if (buf.size() < max_range) {
-            throw make_except_with_loc<std::invalid_argument>("buffer is too small", loc);
-        }
-    }
-
-    /**
      * @brief Get the Device Type Name
      *
      * @param Device
@@ -105,7 +88,7 @@ namespace shambase {
         nvtxRangePush(name);
 #endif
 
-        shamlog_debug_sycl_ln("SYCL", shambase::format("parallel_for {} N={}", name, length));
+        shamlog_debug_sycl_ln("SYCL", sham::format("parallel_for {} N={}", name, length));
 
         if constexpr (mode == PARALLEL_FOR) {
 
@@ -156,7 +139,7 @@ namespace shambase {
 #endif
 
         shamlog_debug_sycl_ln(
-            "SYCL", shambase::format("parallel_for {} N={} {}", name, length_x, length_y));
+            "SYCL", sham::format("parallel_for {} N={} {}", name, length_x, length_y));
 
         if constexpr (mode == PARALLEL_FOR) {
 
@@ -217,8 +200,7 @@ namespace shambase {
 #endif
 
         shamlog_debug_sycl_ln(
-            "SYCL",
-            shambase::format("parallel_for {} N={} {} {}", name, length_x, length_y, length_z));
+            "SYCL", sham::format("parallel_for {} N={} {} {}", name, length_x, length_y, length_z));
 
         if constexpr (mode == PARALLEL_FOR) {
 

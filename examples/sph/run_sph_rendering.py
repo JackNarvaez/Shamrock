@@ -20,12 +20,18 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import shamrock
+from shamrock import NeighCacheStrategy
 
 # If we use the shamrock executable to run this script instead of the python interpreter,
 # we should not initialize the system as the shamrock executable needs to handle specific MPI logic
 if not shamrock.sys.is_initialized():
     shamrock.change_loglevel(1)
     shamrock.sys.init("0:0")
+
+# %%
+# Use shamrock documentation style for matplotlib
+shamrock.matplotlib.set_shamrock_mpl_style()
+
 
 # %%
 # Setup units
@@ -161,7 +167,7 @@ cfg.set_cfl_force(C_force)
 
 # On a chaotic disc, we disable to two stage search to avoid giant leaves
 cfg.set_tree_reduction_level(6)
-cfg.set_two_stage_search(False)
+cfg.set_neigh_cache_strategy(NeighCacheStrategy.SingleStage)
 
 # Enable this to debug the neighbor counts
 # cfg.set_show_neigh_stats(True)
@@ -169,7 +175,7 @@ cfg.set_two_stage_search(False)
 # Standard way to set the smoothing length (e.g. Price et al. 2018)
 cfg.set_smoothing_length_density_based()
 
-# Standard density based smoothing lenght but with a neighbor count limit
+# Standard density based smoothing length but with a neighbor count limit
 # Use it if you have large slowdowns due to giant particles
 # I recommend to use it if you have a circumbinary discs as the issue is very likely to happen
 # cfg.set_smoothing_length_density_based_neigh_lim(500)
@@ -204,9 +210,11 @@ gen_disc = setup.make_generator_disc_mc(
     init_h_factor=0.03,
 )
 
-# Print the dot graph of the setup
-print(gen_disc.get_dot())
+# %%
+# Show the dot graph of the setup
+shamrock.utils.plot.DotGraph(gen_disc.get_dot())
 
+# %%
 # Apply the setup
 setup.apply_setup(gen_disc)
 
