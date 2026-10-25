@@ -1740,8 +1740,10 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
 
     {
         NamedStackEntry stack_loc{"gather data"};
+        // Gather on rank 0 only, which is the rank that writes the dump. Every rank must still
+        // call this, as the gather is collective
         std::vector<std::unique_ptr<shamrock::patch::PatchDataLayer>> gathered
-            = ctx.allgather_data();
+            = ctx.gather_data(0);
 
         for (auto &dat : gathered) {
             add_pdat_to_phantom_block(block_part, shambase::get_check_ref(dat));
