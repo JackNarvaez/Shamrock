@@ -184,7 +184,7 @@ namespace shammodels::sph {
      */
     struct PhantomDumpBlock {
         /// The total number of values in the block.
-        i64 tot_count;
+        i64 tot_count = 0;
 
         /// The type for Phantom's real type.
         using fort_real = f64;
