@@ -406,9 +406,15 @@ namespace shambase {
          * be opened, written or closed
          */
         inline void write_to_file(std::string fname) {
+            // Number of bytes to copy from the internal buffer
+            const std::streampos start = data.tellg();
+            data.seekg(0, std::ios::end);
+            const std::streamoff expected = data.tellg() - start;
+            data.seekg(start);
+
             // The whole file is built in memory first, and a failed allocation there only sets
             // badbit on the buffer, so check that it is complete before writing it
-            if (data.bad()) {
+            if (!data || expected <= 0) {
                 throw_with_loc<std::runtime_error>(
                     "the in-memory content of " + fname + " is incomplete, not writing it");
             }
@@ -424,12 +430,14 @@ namespace shambase {
                     "could not open " + fname + " for writing: " + reason());
             }
 
-            // Copy the contents of the internal streambuf to the file
+            // Copy the contents of the internal streambuf to the file. The copy stops silently if
+            // a write fails part way, so also compare the bytes written with the expected count
             out_f << data.rdbuf();
+            const std::streamoff written = out_f.tellp(); // -1 if the stream failed
             out_f.close();
 
             // A failed write or close leaves the stream in a failed state
-            if (!out_f) {
+            if (!out_f || written != expected) {
                 throw_with_loc<std::runtime_error>("could not write " + fname + ": " + reason());
             }
         }
