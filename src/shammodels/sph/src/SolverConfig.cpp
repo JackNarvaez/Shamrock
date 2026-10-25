@@ -144,18 +144,8 @@ namespace shammodels::sph {
             ghost_layout.add_field<Tscal>("psi/ch", 1);
         }
 
-        if (has_field_divB()) {
-            ghost_layout.add_field<Tscal>("divB", 1);
-            ghost_layout.add_field<Tscal>("mcurlB", 1);
-        }
-
         if (has_field_curlB()) {
             ghost_layout.add_field<Tvec>("curlB", 1);
-        }
-
-        if (has_field_djvi2()) {
-            ghost_layout.add_field<Tscal>("dudtAV", 1);
-            ghost_layout.add_field<Tscal>("dudtAR", 1);
         }
 
         if (dust_config.has_epsilon_field()) {
