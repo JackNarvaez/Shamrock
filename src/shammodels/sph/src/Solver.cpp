@@ -2495,18 +2495,19 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                             });
                     });
 
+                    sycl::event e_vclean;
                     if (has_psi_field) {
                         NamedStackEntry tmppp{"compute vclean"};
                         Tscal const mu_0 = solver_config.get_constant_mu_0();
                         sham::DeviceBuffer<Tscal> &vclean_buf
                             = shambase::get_check_ref(vclean_dt).get_buf_check(cur_p.id_patch);
 
-                        Tvec *B_on_rho = mpdat.get_field_buf_ref<Tvec>(iB_on_rho_interf)
-                                             .get_write_access(depends_list);
+                        const Tvec *B_on_rho = mpdat.get_field_buf_ref<Tvec>(iB_on_rho_interf)
+                                                   .get_read_access(depends_list);
 
                         auto vclean = vclean_buf.get_write_access(depends_list);
 
-                        auto e = q.submit(depends_list, [&](sycl::handler &cgh) {
+                        e_vclean = q.submit(depends_list, [&](sycl::handler &cgh) {
                             const Tscal pmass = solver_config.gpart_mass;
 
                             tree::ObjectCacheIterator particle_looper(particle_looper_ptrs);
@@ -2529,16 +2530,23 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                                     vclean[id_a] = vclean_a;
                                 });
                         });
-                        mpdat.get_field_buf_ref<Tvec>(iB_on_rho_interf).complete_event_state(e);
-                        vclean_buf.complete_event_state(e);
+                        mpdat.get_field_buf_ref<Tvec>(iB_on_rho_interf)
+                            .complete_event_state(e_vclean);
+                        vclean_buf.complete_event_state(e_vclean);
                     };
+
+                    // compute vclean also reads hpart, uint and cs
+                    std::vector<sycl::event> e_read{e};
+                    if (has_psi_field) {
+                        e_read.push_back(e_vclean);
+                    }
 
                     buf_xyz.complete_event_state(e);
                     buf_vxyz.complete_event_state(e);
-                    buf_hpart.complete_event_state(e);
-                    buf_uint.complete_event_state(e);
+                    buf_hpart.complete_event_state(e_read);
+                    buf_uint.complete_event_state(e_read);
                     buf_pressure.complete_event_state(e);
-                    cs_buf.complete_event_state(e);
+                    cs_buf.complete_event_state(e_read);
                     vsig_buf.complete_event_state(e);
 
                     sham::EventList resulting_events;
@@ -2557,6 +2565,10 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                     = mpdat.get_field<Tscal>(ihpart_interf).get_buf();
                 sham::DeviceBuffer<Tscal> &vsig_buf   = vsig_max_dt.get_buf_check(cur_p.id_patch);
                 sham::DeviceBuffer<Tscal> &cfl_dt_buf = cfl_dt.get_buf_check(cur_p.id_patch);
+                sham::DeviceBuffer<Tscal> *vclean_buf
+                    = (has_psi_field)
+                          ? &shambase::get_check_ref(vclean_dt).get_buf_check(cur_p.id_patch)
+                          : nullptr;
 
                 auto &q = shamsys::instance::get_compute_scheduler().get_queue();
                 sham::EventList depends_list;
@@ -2564,6 +2576,8 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                 auto hpart  = buf_hpart.get_read_access(depends_list);
                 auto a      = buf_axyz.get_read_access(depends_list);
                 auto vsig   = vsig_buf.get_read_access(depends_list);
+                const Tscal *vclean
+                    = (has_psi_field) ? vclean_buf->get_read_access(depends_list) : nullptr;
                 auto cfl_dt = cfl_dt_buf.get_write_access(depends_list);
 
                 auto e = q.submit(depends_list, [&](sycl::handler &cgh) {
@@ -2580,34 +2594,25 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
                         Tscal dt_c = C_cour * h_a / vsig_a;
                         Tscal dt_f = C_force * sycl::sqrt(h_a / abs_a_a);
 
-                        cfl_dt[item] = sycl::min(dt_c, dt_f);
+                        Tscal dt_a = sycl::min(dt_c, dt_f);
+
+                        // divB cleaning limit, applied in this kernel so that cfl_dt has a
+                        // single writer and the min reduction waits for it
+                        if (vclean != nullptr) {
+                            Tscal dt_divB_cleaning = C_cour * h_a / vclean[item];
+                            dt_a                   = sycl::min(dt_a, dt_divB_cleaning);
+                        }
+
+                        cfl_dt[item] = dt_a;
                     });
                 });
-
-                if (has_psi_field) {
-                    sham::DeviceBuffer<Tscal> &vclean_buf
-                        = shambase::get_check_ref(vclean_dt).get_buf_check(cur_p.id_patch);
-                    auto vclean = vclean_buf.get_read_access(depends_list);
-                    auto e      = q.submit(depends_list, [&](sycl::handler &cgh) {
-                        Tscal C_cour = solver_config.cfl_config.cfl_cour
-                                       * solver_config.time_state.cfl_multiplier;
-
-                        cgh.parallel_for(
-                            sycl::range<1>{pdat.get_obj_cnt()}, [=](sycl::item<1> item) {
-                                Tscal h_a      = hpart[item];
-                                Tscal vclean_a = vclean[item];
-
-                                Tscal dt_divB_cleaning = C_cour * h_a / vclean_a;
-
-                                cfl_dt[item] = sycl::min(cfl_dt[item], dt_divB_cleaning);
-                            });
-                    });
-                    vclean_buf.complete_event_state(e);
-                };
 
                 buf_hpart.complete_event_state(e);
                 buf_axyz.complete_event_state(e);
                 vsig_buf.complete_event_state(e);
+                if (has_psi_field) {
+                    vclean_buf->complete_event_state(e);
+                }
                 cfl_dt_buf.complete_event_state(e);
             });
 
