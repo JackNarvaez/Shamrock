@@ -21,6 +21,8 @@
 #include "shambase/bytestream.hpp"
 #include "shambase/exception.hpp"
 #include <array>
+#include <cerrno>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <sstream>
@@ -400,21 +402,35 @@ namespace shambase {
          *
          * @param fname Filename to write to
          *
-         * @throws runtime_error if the file could not be opened for writing
+         * @throws runtime_error if the internal buffer is incomplete, or if the file could not
+         * be opened, written or closed
          */
         inline void write_to_file(std::string fname) {
+            // The whole file is built in memory first, and a failed allocation there only sets
+            // badbit on the buffer, so check that it is complete before writing it
+            if (data.bad()) {
+                throw_with_loc<std::runtime_error>(
+                    "the in-memory content of " + fname + " is incomplete, not writing it");
+            }
+
+            auto reason = []() -> std::string {
+                return (errno != 0) ? std::strerror(errno) : "unknown error";
+            };
+
+            errno = 0;
             std::ofstream out_f(fname, std::ios::binary);
+            if (!out_f) {
+                throw_with_loc<std::runtime_error>(
+                    "could not open " + fname + " for writing: " + reason());
+            }
 
-            if (out_f) {
-                // Copy the contents of the internal streambuf to the file
-                out_f << data.rdbuf();
+            // Copy the contents of the internal streambuf to the file
+            out_f << data.rdbuf();
+            out_f.close();
 
-                // Close the file
-                out_f.close();
-            } else {
-                // Throw an exception if the file could not be opened for writing
-                throw_unimplemented(
-                    "unimplemented case : could not open file " + fname + " for writing");
+            // A failed write or close leaves the stream in a failed state
+            if (!out_f) {
+                throw_with_loc<std::runtime_error>("could not write " + fname + ": " + reason());
             }
         }
     };
