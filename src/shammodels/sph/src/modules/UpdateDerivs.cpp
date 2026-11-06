@@ -1360,6 +1360,9 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
 
             constexpr Tscal Rker2 = Kernel::Rkern * Kernel::Rkern;
 
+            const Tscal psi_damp
+                = (mhd_mode == shamrock::sph::mhd::MHDType::Ideal) ? _sigma : Tscal(1);
+
             shambase::parallel_for(cgh, pdat.get_obj_cnt(), "compute MHD", [=](u64 gid) {
                 u32 id_a = (u32) gid;
 
@@ -1496,14 +1499,14 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                     tensile_corr[id_a] = tensile_corr_term;
                     psi_propag[id_a]   = psi_propag_term;
                     psi_diff[id_a]     = psi_diff_term;
-                    psi_cons[id_a]     = -psi_a / h_a;
+                    psi_cons[id_a]     = -psi_damp * psi_a / h_a;
                     u_mhd[id_a]        = tmpdU_mhd;
                 }
 
                 axyz[id_a] += force_mhd;
                 du[id_a] += tmpdU_mhd;
                 dB_on_rho[id_a]  = magnetic_eq;
-                dpsi_on_ch[id_a] = psi_eq - psi_a / h_a;
+                dpsi_on_ch[id_a] = psi_eq - psi_damp * psi_a / h_a;
                 drho_dt[id_a]    = drho_eq;
             });
         });
