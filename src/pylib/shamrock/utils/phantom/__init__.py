@@ -238,7 +238,7 @@ def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
                 lines = f.readlines()
             with open(os.path.join(simulation_folder, f"{sim_name}.in"), "w") as f:
                 for line in lines:
-                    if "dumpfile" in line:
+                    if line.split("=", 1)[0].strip() == "dumpfile":
                         line = f"            dumpfile = {get_ph_dump_file_name(dump_number)}  ! dump file to start from\n"
                     f.write(line)
 
