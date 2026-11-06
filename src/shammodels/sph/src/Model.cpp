@@ -1746,10 +1746,10 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     write_shamrock_boundaries_in_phantom_dump(
         solver.solver_config.boundary_config, box_size, dump, bypass_error_check);
 
-    dump.table_header_fort_real.add("get_conserv", -1);
-    dump.table_header_fort_real.add("etot_in", 0.59762);
-    dump.table_header_fort_real.add("angtot_in", 0.0189694);
-    dump.table_header_fort_real.add("totmom_in", 0.0306284);
+    dump.table_header_fort_real.add("get_conserv", 1);
+    dump.table_header_fort_real.add("etot_in", 0);
+    dump.table_header_fort_real.add("angtot_in", 0);
+    dump.table_header_fort_real.add("totmom_in", 0);
 
     write_shamrock_units_in_phantom_dump(solver.solver_config.unit_sys, dump, bypass_error_check);
 
