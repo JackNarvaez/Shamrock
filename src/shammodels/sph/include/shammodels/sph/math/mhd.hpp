@@ -327,6 +327,7 @@ namespace shamrock::sph::mhd {
 
         Tscal alpha_B,
         Tscal frac_divB,
+        bool gd,
 
         Tvec B_a,
         Tvec B_b,
@@ -366,8 +367,13 @@ namespace shamrock::sph::mhd {
         Tscal dWab_a = Fab_a;
         Tscal dWab_b = Fab_b;
 
-        Tscal sub_fact_a = rho_a_sq * omega_a;
-        Tscal sub_fact_b = rho_b * rho_b * omega_b;
+        Tscal rho_b_sq   = rho_b * rho_b;
+        Tscal rho_ab     = rho_a * rho_b;
+        Tscal rho_fact_a = (gd) ? rho_ab : rho_a_sq;
+        Tscal rho_fact_b = (gd) ? rho_ab : rho_b_sq;
+
+        Tscal sub_fact_a = rho_fact_a * omega_a;
+        Tscal sub_fact_b = rho_fact_b * omega_b;
 
         Tscal v_shock_a = shamphys::MHD_physics<Tvec, Tscal>::v_shock(cs_a, B_a, rho_a, mu_0);
         Tscal v_shock_b = shamphys::MHD_physics<Tvec, Tscal>::v_shock(cs_b, B_b, rho_b, mu_0);
@@ -398,8 +404,8 @@ namespace shamrock::sph::mhd {
 
         sum_mag_tension += -b_dot_grad_w(
             pmass,
-            rho_a_sq,
-            rho_b * rho_b,
+            rho_fact_a,
+            rho_fact_b,
             B_a,
             B_b,
             omega_a,
@@ -411,8 +417,8 @@ namespace shamrock::sph::mhd {
         Tvec magnetic_pressure_term = (1. / (2 * mu_0))
                                       * sph::sph_pressure_symetric(
                                           pmass,
-                                          rho_a_sq,
-                                          rho_b * rho_b,
+                                          rho_fact_a,
+                                          rho_fact_b,
                                           sycl::dot(B_a, B_a),
                                           sycl::dot(B_b, B_b),
                                           omega_a,
@@ -433,8 +439,8 @@ namespace shamrock::sph::mhd {
         du_dt += alpha_B
                  * lambda_artes(
                      pmass,
-                     rho_a_sq,
-                     rho_b * rho_b,
+                     rho_fact_a,
+                     rho_fact_b,
                      vsig_B,
                      B_a,
                      B_b,
@@ -455,12 +461,12 @@ namespace shamrock::sph::mhd {
 
         dB_on_rho_dt += v_ab
                         * d_b_on_rho_induction_term(
-                            pmass, rho_a_sq, B_a, omega_a, r_ab_unit * dWab_a); // @@@ dWab_b ?
+                            pmass, rho_fact_a, B_a, omega_a, r_ab_unit * dWab_a); // @@@ dWab_b ?
 
         dB_on_rho_dt += d_b_on_rho_psi_term(
             pmass,
-            rho_a_sq,
-            rho_b * rho_b,
+            rho_fact_a,
+            rho_fact_b,
             psi_a,
             psi_b,
             omega_a,
@@ -474,7 +480,7 @@ namespace shamrock::sph::mhd {
 
         // d(psi/ch)/dt terms
         sum_psi_propag = dpsi_on_ch_parabolic_propag(
-            pmass, rho_a, B_a, B_b, omega_a, r_ab_unit * dWab_a, v_shock_a);
+            pmass, (gd) ? rho_b : rho_a, B_a, B_b, omega_a, r_ab_unit * dWab_a, v_shock_a);
 
         sum_psi_diff = dpsi_on_ch_parabolic_diff(
             pmass, rho_a, v_ab, psi_a, omega_a, r_ab_unit * dWab_a, v_shock_a);

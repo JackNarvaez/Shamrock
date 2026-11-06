@@ -91,6 +91,7 @@ def apply_in_params(cfg, dump, in_params):
         cfg.set_IdealMHD(
             sigma_mhd=in_params.get("psidecayfac", 1.0),
             alpha_B=from_in_or_dump("alphaB", 1.0),
+            gd=True,
         )
 
     rkill = in_params.get("rkill", -1.0)

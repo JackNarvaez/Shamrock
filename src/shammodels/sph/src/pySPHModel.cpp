@@ -227,12 +227,13 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
         .def("has_field_b_on_rho", &TConfig::has_field_b_on_rho)
         .def(
             "set_IdealMHD",
-            [](TConfig &self, Tscal sigma_mhd, Tscal alpha_B) {
-                self.set_ideal_mhd({sigma_mhd, alpha_B});
+            [](TConfig &self, Tscal sigma_mhd, Tscal alpha_B, bool gd) {
+                self.set_ideal_mhd({sigma_mhd, alpha_B, gd});
             },
             py::kw_only(),
             py::arg("sigma_mhd"),
-            py::arg("alpha_B") = 1.0)
+            py::arg("alpha_B") = 1.0,
+            py::arg("gd")      = false)
         .def(
             "set_NonIdealMHD",
             [](TConfig &self, Tscal sigma_mhd, Tscal etaO, Tscal etaH, Tscal etaAD, Tscal alpha_B) {

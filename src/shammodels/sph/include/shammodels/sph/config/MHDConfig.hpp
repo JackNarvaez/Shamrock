@@ -40,6 +40,7 @@ struct shammodels::sph::MHDConfig {
     struct IdealMhdConstrainedHyperPara {
         Tscal sigma_mhd = 0.1;
         Tscal alpha_B   = 1.;
+        bool gd         = false;
     };
 
     struct NonIdealMHD {
@@ -103,6 +104,7 @@ struct shammodels::sph::MHDConfig {
             logger::raw_ln("  Config MHD  : Ideal MHD, constrained hyperbolic/parabolic treatment");
             logger::raw_ln("  sigma_mhd  =", v->sigma_mhd);
             logger::raw_ln("  alpha_B    =", v->alpha_B);
+            logger::raw_ln("  gd         =", v->gd);
         } else if (NonIdealMHD *v = std::get_if<NonIdealMHD>(&configMHD)) {
             logger::raw_ln("  Config MHD Type : Non Ideal MHD");
             logger::raw_ln("  sigma_mhd   =", v->sigma_mhd);
@@ -156,6 +158,7 @@ namespace shammodels::sph {
                 {"mhd_type", "ideal_mhd_constrained_hyper_para"},
                 {"sigma_mhd", v->sigma_mhd},
                 {"alpha_B", v->alpha_B},
+                {"gd", v->gd},
             };
         } else if (const NonIdealMHD *v = std::get_if<NonIdealMHD>(&p.configMHD)) {
             // Write the shear base, direction, and speed into the JSON object
@@ -208,6 +211,7 @@ namespace shammodels::sph {
                 IMHD{
                     j.at("sigma_mhd").get<Tscal>(),
                     j.value("alpha_B", def.alpha_B),
+                    j.value("gd", def.gd),
                 });
         } else if (mhd_type == "non_ideal_mhd") {
             // alpha_u, alpha_AV & beta_AV are now in the artificial viscosity config, they are

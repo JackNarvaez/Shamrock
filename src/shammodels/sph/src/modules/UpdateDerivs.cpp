@@ -1174,6 +1174,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd(
     update_derivs_mhd_impl<shamrock::sph::mhd::MHDType::Ideal>(
         cfg.sigma_mhd,
         cfg.alpha_B,
+        cfg.gd,
         /*etaO=*/Tscal(0),
         /*etaH=*/Tscal(0),
         /*etaAD=*/Tscal(0));
@@ -1182,13 +1183,13 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd(
 template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_nimhd(NonIdealMHD cfg) {
     update_derivs_mhd_impl<shamrock::sph::mhd::MHDType::NonIdeal>(
-        cfg.sigma_mhd, cfg.alpha_B, cfg.etaO, cfg.etaH, cfg.etaAD);
+        cfg.sigma_mhd, cfg.alpha_B, /*gd=*/false, cfg.etaO, cfg.etaH, cfg.etaAD);
 }
 
 template<class Tvec, template<class> class SPHKernel>
 template<shamrock::sph::mhd::MHDType mhd_mode>
 void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_impl(
-    Tscal sigma_mhd, Tscal alpha_B, Tscal etaO, Tscal etaH, Tscal etaAD) {
+    Tscal sigma_mhd, Tscal alpha_B, bool gd, Tscal etaO, Tscal etaH, Tscal etaAD) {
 
     StackEntry stack_loc{};
 
@@ -1341,6 +1342,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
             const Tscal pmass    = solver_config.gpart_mass;
             const Tscal _sigma   = sigma_mhd;
             const Tscal _alpha_B = alpha_B;
+            const bool _gd       = gd;
             const Tscal _etaO    = etaO;
             const Tscal _etaH    = etaH;
             const Tscal _etaAD   = etaAD;
@@ -1348,6 +1350,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
             shamlog_debug_ln("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@", "");
             shamlog_debug_sycl_ln("deriv kernel", "sigma_mhd  :", _sigma);
             shamlog_debug_sycl_ln("deriv kernel", "alpha_B    :", _alpha_B);
+            shamlog_debug_sycl_ln("deriv kernel", "gd         :", _gd);
             shamlog_debug_sycl_ln("deriv kernel", "etaO       :", _etaO);
             shamlog_debug_sycl_ln("deriv kernel", "etaH       :", _etaH);
             shamlog_debug_sycl_ln("deriv kernel", "etaAD      :", _etaAD);
@@ -1439,6 +1442,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                         h_b,
                         _alpha_B,
                         frac_divB_a,
+                        _gd,
                         B_a,
                         B_b,
                         J_a,
