@@ -1197,6 +1197,18 @@ auto shammodels::sph::Model<Tvec, SPHKernel>::gen_config_from_phantom_dump(
     conf.cfl_config.cfl_cour  = phdump.read_header_float<Tscal>("C_cour");
     conf.cfl_config.cfl_force = phdump.read_header_float<Tscal>("C_force");
 
+    if (phdump.has_header_entry("hfact") && shamcomm::world_rank() == 0) {
+        f64 hfact = phdump.read_header_float<f64>("hfact");
+        if (sycl::fabs(hfact - Kernel::hfactd) > 1e-6 * Kernel::hfactd) {
+            logger::warn_ln(
+                "Model",
+                "the phantom dump uses hfact =",
+                hfact,
+                "but the SPH kernel of this model uses hfact =",
+                Kernel::hfactd);
+        }
+    }
+
     conf.eos_config      = get_shamrock_eosconfig<Tvec>(phdump, bypass_error);
     conf.artif_viscosity = get_shamrock_avconfig<Tvec>(phdump);
     conf.mhd_config      = get_shamrock_mhdconfig<Tvec>(phdump);
