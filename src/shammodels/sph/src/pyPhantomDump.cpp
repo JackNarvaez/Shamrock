@@ -46,6 +46,7 @@ ON_PYTHON_INIT {
             [](T &self, std::string s) {
                 return self.read_header_int<i64>(s);
             })
+        .def("has_header_entry", &T::has_header_entry)
         .def("print_state", &shammodels::sph::PhantomDump::print_state);
 
     m.def("load_phantom_dump", [](std::string fname) {

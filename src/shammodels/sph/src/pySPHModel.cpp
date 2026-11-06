@@ -224,6 +224,7 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             py::arg("alpha_u"),
             py::arg("beta_AV"))
         .def("set_noMHD", &TConfig::set_noMHD)
+        .def("has_field_b_on_rho", &TConfig::has_field_b_on_rho)
         .def(
             "set_IdealMHD",
             [](TConfig &self, Tscal sigma_mhd, Tscal alpha_B) {
