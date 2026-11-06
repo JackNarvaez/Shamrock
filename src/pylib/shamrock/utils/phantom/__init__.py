@@ -62,7 +62,62 @@ def parse_in_file(in_file):
     return params
 
 
-def load_simulation(simulation_path, dump_file_name=None, in_file_name=None, do_print=True):
+def apply_in_params(cfg, dump, in_params):
+    """
+    Apply the parameters of a Phantom .in file to a Shamrock solver config.
+    """
+
+    def from_in_or_dump(key, default):
+        if key in in_params:
+            return in_params[key]
+        if dump.has_header_entry(key):
+            return dump.read_header_float(key)
+        return default
+
+    if "C_cour" in in_params:
+        cfg.set_cfl_cour(in_params["C_cour"])
+    if "C_force" in in_params:
+        cfg.set_cfl_force(in_params["C_force"])
+
+    cfg.set_artif_viscosity_VaryingCD10(
+        alpha_min=from_in_or_dump("alpha", 0.0),
+        alpha_max=in_params.get("alphamax", 1.0),
+        sigma_decay=in_params.get("avdecayconst", 0.1),
+        alpha_u=from_in_or_dump("alphau", 1.0),
+        beta_AV=in_params.get("beta", 2.0),
+    )
+
+    if cfg.has_field_b_on_rho():
+        cfg.set_IdealMHD(
+            sigma_mhd=in_params.get("psidecayfac", 1.0),
+            alpha_B=from_in_or_dump("alphaB", 1.0),
+        )
+
+    rkill = in_params.get("rkill", -1.0)
+    if rkill > 0:
+        cfg.add_kill_sphere(center=(0.0, 0.0, 0.0), radius=rkill)
+
+    supported_values = {
+        "overcleanfac": 1.0,
+        "irealvisc": 0,
+        "icooling": 0,
+        "iexternalforce": 0,
+        "ipdv_heating": 1,
+        "ishock_heating": 1,
+        "iresistive_heating": 1,
+    }
+    if shamrock.sys.world_rank() == 0:
+        for key, value in supported_values.items():
+            if key in in_params and in_params[key] != value:
+                print(
+                    f"Warning: phantom option {key} = {in_params[key]} "
+                    "is not supported by Shamrock, ignoring it"
+                )
+
+
+def load_simulation(
+    simulation_path, dump_file_name=None, in_file_name=None, do_print=True, sph_kernel="M4"
+):
     """
     Load a Phantom simulation into a Shamrock model.
     """
@@ -99,11 +154,13 @@ def load_simulation(simulation_path, dump_file_name=None, in_file_name=None, do_
     # Start a SPH simulation from the phantom dump
     ctx = shamrock.Context()
     ctx.pdata_layout_new()
-    model = shamrock.get_Model_SPH(context=ctx, vector_type="f64_3", sph_kernel="M4")
+    model = shamrock.get_Model_SPH(context=ctx, vector_type="f64_3", sph_kernel=sph_kernel)
 
     if do_print and shamrock.sys.world_rank() == 0:
         print(" - Generating Shamrock solver config from phantom dump")
     cfg = model.gen_config_from_phantom_dump(dump)
+    if in_params is not None:
+        apply_in_params(cfg, dump, in_params)
     if do_print and shamrock.sys.world_rank() == 0:
         print(" - Setting Shamrock solver config")
     # Set the solver config to be the one stored in cfg
@@ -138,7 +195,7 @@ def load_simulation(simulation_path, dump_file_name=None, in_file_name=None, do_
     return ctx, model, in_params
 
 
-def run_phantom_simulation(simulation_folder, sim_name):
+def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
     """
     Run a Phantom simulation in Shamrock.
     """
@@ -146,7 +203,7 @@ def run_phantom_simulation(simulation_folder, sim_name):
     input_file_name = sim_name + ".in"
 
     ctx, model, in_params = shamrock.utils.phantom.load_simulation(
-        simulation_folder, in_file_name=input_file_name
+        simulation_folder, in_file_name=input_file_name, sph_kernel=sph_kernel
     )
 
     dump_file_name = in_params["dumpfile"]
