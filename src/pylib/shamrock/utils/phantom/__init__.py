@@ -228,7 +228,7 @@ def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
             print("----------------   Phantom dump saving   -----------------")
             print("-----------------------------------------------------------")
             print(f" - Saving dump {dump_number} to {get_ph_dump_name(dump_number)}")
-        dump = model.make_phantom_dump()
+        dump = model.make_phantom_dump(dtmax=dtmax, idumpfile=dump_number)
         dump.save_dump(get_ph_dump_name(dump_number))
 
         # replace dumpfile in the input file
