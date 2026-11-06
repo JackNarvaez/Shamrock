@@ -277,6 +277,7 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
     shamrock::patch::PatchDataLayerLayout &pdl = scheduler().pdl_old();
     bool has_b_field                           = solver_config.has_field_b_on_rho();
     bool has_psi_field                         = solver_config.has_field_psi_on_ch();
+    bool has_mhd_diag_fields                   = solver_config.has_field_mhd_diagnostics();
     bool has_epsilon_field                     = solver_config.dust_config.has_epsilon_field();
     bool has_deltav_field                      = solver_config.dust_config.has_deltav_field();
     bool has_s_j_field                         = solver_config.dust_config.has_s_j_field();
@@ -302,6 +303,9 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
     if (has_b_field) {
         solver_graph.register_edge("B/rho", FieldRefs<Tvec>("B/rho", "B_{\\rho}"));
         solver_graph.register_edge("dB/rho", FieldRefs<Tvec>("dB/rho", "dB_{\\rho}"));
+    }
+    if (has_mhd_diag_fields) {
+        solver_graph.register_edge("dudtAV", FieldRefs<Tscal>("dudtAV", "du/dt_{\\rm AV}"));
     }
     if (has_psi_field) {
         solver_graph.register_edge("psi/ch", FieldRefs<Tscal>("psi/ch", "\\psi_{\\rm ch}"));
@@ -442,6 +446,16 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
                     solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
                     solver_graph.get_edge_ptr<FieldRefs<Tvec>>("dB/rho"));
             attach_field_sequence.push_back(attach_dB_on_rho);
+        }
+
+        if (has_mhd_diag_fields) {
+            auto attach_dudtAV = solver_graph.register_node(
+                "attach_dudtAV", GetFieldRefFromLayer<Tscal>(pdl, "dudtAV"));
+            shambase::get_check_ref(attach_dudtAV)
+                .set_edges(
+                    solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata"),
+                    solver_graph.get_edge_ptr<FieldRefs<Tscal>>("dudtAV"));
+            attach_field_sequence.push_back(attach_dudtAV);
         }
 
         if (has_psi_field) {

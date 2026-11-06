@@ -76,6 +76,13 @@ namespace shammodels::sph {
             pdl.add_field<Tscal>("divB", 1);
         }
 
+        if (has_field_mhd_diagnostics()) {
+            pdl.add_field<Tscal>("djvi2", 1);
+            pdl.add_field<Tscal>("dudtAV", 1);
+            pdl.add_field<Tscal>("dudtAR", 1);
+            pdl.add_field<Tscal>("mcurlB", 1);
+        }
+
         if (has_field_curl_b()) {
             pdl.add_field<Tvec>("curlB", 1);
         }

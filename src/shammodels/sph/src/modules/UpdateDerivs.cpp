@@ -581,7 +581,8 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mm97
                 B_on_rho_refs,
                 storage.neigh_cache,
                 axyz_refs,
-                duint_refs);
+                duint_refs,
+                solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dudtAV"));
         }
         node->evaluate();
     } else {
@@ -788,7 +789,8 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_cd10
                 B_on_rho_refs,
                 storage.neigh_cache,
                 axyz_refs,
-                duint_refs);
+                duint_refs,
+                solver_graph.get_edge_ptr<shamrock::solvergraph::FieldRefs<Tscal>>("dudtAV"));
         }
         node->evaluate();
     } else {
@@ -1217,6 +1219,12 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
     const u32 ipsi_cons     = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("psi_cons") : -1;
     const u32 iu_mhd        = (do_MHD_debug) ? pdl.get_field_idx<Tscal>("u_mhd") : -1;
 
+    const bool has_div_b    = solver_config.has_field_div_b();
+    const bool has_mhd_diag = solver_config.has_field_mhd_diagnostics();
+    const u32 idivB         = (has_div_b) ? pdl.get_field_idx<Tscal>("divB") : 0;
+    const u32 imcurlB       = (has_mhd_diag) ? pdl.get_field_idx<Tscal>("mcurlB") : 0;
+    const u32 idudtAR       = (has_mhd_diag) ? pdl.get_field_idx<Tscal>("dudtAR") : 0;
+
     Tscal const mu_0 = solver_config.get_constant_mu_0();
 
     shamrock::patch::PatchDataLayerLayout &ghost_layout
@@ -1312,6 +1320,18 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                            ? pdat.get_field_buf_ref<Tscal>(iu_mhd).get_write_access(depends_list)
                            : nullptr;
 
+        Tscal *divB = (has_div_b)
+                          ? pdat.get_field_buf_ref<Tscal>(idivB).get_write_access(depends_list)
+                          : nullptr;
+        Tscal *mcurlB
+            = (has_mhd_diag)
+                  ? pdat.get_field_buf_ref<Tscal>(imcurlB).get_write_access(depends_list)
+                  : nullptr;
+        Tscal *dudtAR
+            = (has_mhd_diag)
+                  ? pdat.get_field_buf_ref<Tscal>(idudtAR).get_write_access(depends_list)
+                  : nullptr;
+
         auto ploop_ptrs = pcache.get_read_access(depends_list);
 
         auto e = q.submit(depends_list, [&](sycl::handler &cgh) {
@@ -1367,6 +1387,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                 Tscal psi_propag_term = 0;
                 Tscal psi_diff_term   = 0;
                 Tscal psi_cons_term   = 0;
+                Tvec sum_curlB{0, 0, 0};
 
                 particle_looper.for_each_object(id_a, [&](u32 id_b) {
                     Tvec dr    = xyz_a - xyz[id_b];
@@ -1433,7 +1454,21 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                         psi_propag_term,
                         psi_diff_term,
                         psi_cons_term);
+
+                    if (has_mhd_diag) {
+                        Tvec r_ab_unit = dr * sham::inv_sat_positive(rab);
+                        sum_curlB += pmass * sycl::cross(B_a - B_b, r_ab_unit * Fab_a);
+                    }
                 });
+
+                if (has_div_b) {
+                    divB[id_a] = -psi_propag_term * sham::inv_sat_positive(v_shock_a);
+                }
+
+                if (has_mhd_diag) {
+                    mcurlB[id_a] = sycl::length(sum_curlB) / (rho_a * omega_a);
+                    dudtAR[id_a] = tmpdU_mhd;
+                }
 
                 if (do_nimhd) {
                     // only add once per particle
@@ -1477,6 +1512,15 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
 
         if (do_nimhd) {
             buf_J->complete_event_state(e);
+        }
+
+        if (has_div_b) {
+            pdat.get_field_buf_ref<Tscal>(idivB).complete_event_state(e);
+        }
+
+        if (has_mhd_diag) {
+            pdat.get_field_buf_ref<Tscal>(imcurlB).complete_event_state(e);
+            pdat.get_field_buf_ref<Tscal>(idudtAR).complete_event_state(e);
         }
 
         if (do_MHD_debug) {

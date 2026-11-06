@@ -48,7 +48,8 @@ struct KernelUpdateDerivsVaryingAlphaAVMHD {
         const Tvec *__restrict B_on_rho,
         shamrock::tree::ObjectCache::ptrs_read ploop_ptrs,
         Tvec *__restrict axyz,
-        Tscal *__restrict duint) const {
+        Tscal *__restrict duint,
+        Tscal *__restrict dudtAV) const {
 
         using namespace shamrock::sph;
 
@@ -73,6 +74,7 @@ struct KernelUpdateDerivsVaryingAlphaAVMHD {
 
         Tvec force_pressure  = Tvec{0, 0, 0};
         Tscal tmpdU_pressure = Tscal{0};
+        Tscal dudtAV_a       = Tscal{0};
 
         particle_looper.for_each_object(id_a, [&](u32 id_b) {
             Tvec dr    = xyz_a - xyz[id_b];
@@ -138,10 +140,14 @@ struct KernelUpdateDerivsVaryingAlphaAVMHD {
 
                 force_pressure,
                 tmpdU_pressure);
+
+            dudtAV_a += duint_dt_pressure(
+                pmass, qa_ab, omega_a_rho_a_inv * rho_a_inv, v_ab, r_ab_unit * Fab_a);
         });
 
-        axyz[id_a]  = force_pressure;
-        duint[id_a] = tmpdU_pressure;
+        axyz[id_a]   = force_pressure;
+        duint[id_a]  = tmpdU_pressure;
+        dudtAV[id_a] = dudtAV_a;
     }
 };
 
@@ -170,6 +176,7 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAVMHD<Tvec, SPHKernel
     // ensure that the output edges are of size part_counts (output without ghosts zones)
     edges.axyz.ensure_sizes(part_counts);
     edges.duint.ensure_sizes(part_counts);
+    edges.dudtAV.ensure_sizes(part_counts);
 
     const Tscal pmass   = edges.gpart_mass.data;
     const Tscal alpha_u = edges.alpha_u.data;
@@ -192,7 +199,8 @@ void shammodels::sph::modules::NodeUpdateDerivsVaryingAlphaAVMHD<Tvec, SPHKernel
             edges.alpha_AV.get_spans(),
             edges.B_on_rho.get_spans(),
             edges.neigh_cache},
-        sham::DDMultiRef{edges.axyz.get_spans(), edges.duint.get_spans()},
+        sham::DDMultiRef{
+            edges.axyz.get_spans(), edges.duint.get_spans(), edges.dudtAV.get_spans()},
         part_counts,
         ComputeKernel{pmass, alpha_u, beta_AV, mu_0});
 }

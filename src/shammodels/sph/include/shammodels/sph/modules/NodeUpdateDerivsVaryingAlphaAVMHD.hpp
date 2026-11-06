@@ -52,7 +52,8 @@
                                                                                                    \
     /* outputs */                                                                                  \
     X_RW(shamrock::solvergraph::IFieldSpan<Tvec>, axyz)                                            \
-    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, duint)
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, duint)                                          \
+    X_RW(shamrock::solvergraph::IFieldSpan<Tscal>, dudtAV)
 
 namespace shammodels::sph::modules {
 
@@ -102,6 +103,8 @@ namespace shammodels::sph::modules {
                 + \frac{1}{2} {alpha_u} \, v^u_{\rm sig} ({uint}_a - {uint}_b)
                 \left( \frac{F_{ab}(h_a)}{ {omega}_a \rho_a } + \frac{F_{ab}(h_b)}{ {omega}_b \rho_b } \right)
                 \right] \\
+            {dudtAV}_a &= {gpart_mass} \sum_b \frac{ q^a_{ab} }{ {omega}_a \rho_a^2 }
+                \, \mathbf{v}_{ab} \cdot \hat{\mathbf{r}}_{ab} \, F_{ab}(h_a) \\
             a &\in [0, {part_counts}), \quad h_{\rm fact} = {hfact}
             \end{align}
             )tex";
