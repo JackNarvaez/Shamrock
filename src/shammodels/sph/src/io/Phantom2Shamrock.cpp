@@ -149,7 +149,10 @@ namespace shammodels::sph {
         f64 alpha_min
             = (phdump.has_header_entry("alpha")) ? phdump.read_header_float<f64>("alpha") : 0;
 
-        cfg.set_varying_cd10(alpha_min, 1, 0.1, phdump.read_header_float<f64>("alphau"), 2);
+        f64 alpha_u
+            = (phdump.has_header_entry("alphau")) ? phdump.read_header_float<f64>("alphau") : 1;
+
+        cfg.set_varying_cd10(alpha_min, 1, 0.1, alpha_u, 2);
 
         return cfg;
     }
