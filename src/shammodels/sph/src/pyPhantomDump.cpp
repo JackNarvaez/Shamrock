@@ -16,6 +16,7 @@
 #include "shambase/fortran_io.hpp"
 #include "shambindings/pybindaliases.hpp"
 #include "shambindings/pytypealias.hpp"
+#include "shamcomm/worldInfo.hpp"
 #include "shammodels/sph/io/Phantom2Shamrock.hpp"
 #include "shammodels/sph/io/PhantomDump.hpp"
 #include <memory>
@@ -30,8 +31,10 @@ ON_PYTHON_INIT {
         .def(
             "save_dump",
             [](T &self, std::string fname) {
-                auto file = self.gen_file();
-                file.write_to_file(fname);
+                if (shamcomm::world_rank() == 0) {
+                    auto file = self.gen_file();
+                    file.write_to_file(fname);
+                }
             })
         .def(
             "read_header_float",
