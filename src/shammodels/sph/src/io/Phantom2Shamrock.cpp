@@ -15,9 +15,11 @@
  */
 
 #include "shammodels/sph/io/Phantom2Shamrock.hpp"
+#include "shamcomm/worldInfo.hpp"
 #include "shammodels/sph/config/BCConfig.hpp"
 #include "shammodels/sph/io/PhantomDump.hpp"
 #include "shammodels/sph/io/PhantomDumpEOSUtils.hpp"
+#include "shamunits/constant_table.hpp"
 
 namespace shammodels::sph {
 
@@ -196,18 +198,28 @@ namespace shammodels::sph {
     template<class Tscal>
     shamunits::UnitSystem<Tscal> get_shamrock_units(PhantomDump &phdump) {
 
-        f64 udist  = phdump.read_header_float<f64>("udist");
-        f64 umass  = phdump.read_header_float<f64>("umass");
-        f64 utime  = phdump.read_header_float<f64>("utime");
-        f64 umagfd = phdump.read_header_float<f64>("umagfd");
+        f64 unit_time   = phdump.read_header_float<f64>("utime");
+        f64 unit_length = phdump.read_header_float<f64>("udist") / m_to_cm;
+        f64 unit_mass   = phdump.read_header_float<f64>("umass") / kg_to_g;
 
-        return shamunits::UnitSystem<Tscal>(
-            utime, udist / m_to_cm, umass / kg_to_g
-            // unit_current = 1 ,
-            // unit_temperature = 1 ,
-            // unit_qte = 1 ,
-            // unit_lumint = 1
-        );
+        f64 mu_0_si      = shamunits::UnitSystem<f64>{}.get<shamunits::constants::mu_0>();
+        f64 unit_current = sycl::sqrt(unit_mass * unit_length / mu_0_si) / unit_time;
+
+        if (phdump.has_header_entry("umagfd") && shamcomm::world_rank() == 0) {
+            f64 umagfd     = phdump.read_header_float<f64>("umagfd");
+            f64 unit_magfd = 1e4 * unit_mass / (unit_current * unit_time * unit_time);
+            if (sycl::fabs(unit_magfd - umagfd) > 1e-6 * sycl::fabs(umagfd)) {
+                logger::warn_ln(
+                    "SPH",
+                    "the phantom dump umagfd =",
+                    umagfd,
+                    "G does not match mu_0 = 1 in code units, which gives",
+                    unit_magfd,
+                    "G");
+            }
+        }
+
+        return shamunits::UnitSystem<Tscal>(unit_time, unit_length, unit_mass, unit_current);
     }
 
     template<class Tscal>
