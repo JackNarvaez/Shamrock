@@ -161,7 +161,7 @@ namespace shammodels::sph {
         MHDConfig<Tvec> cfg{};
 
         bool has_B_field = std::any_of(phdump.blocks.begin(), phdump.blocks.end(), [](auto &block) {
-            return block.has_field("B/rhox");
+            return block.has_field("B/rhox") || block.has_field("Bx");
         });
 
         if (has_B_field) {

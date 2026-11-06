@@ -1286,18 +1286,60 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
             block.fill_vec("B/rhoy", Brhoy);
             block.fill_vec("B/rhoz", Brhoz);
         }
+
+        if (Brhox.empty()) {
+            for (auto &block : phdump.blocks) {
+                block.fill_vec("Bx", Brhox);
+                block.fill_vec("By", Brhoy);
+                block.fill_vec("Bz", Brhoz);
+            }
+
+            if (!Brhox.empty()) {
+                if (Brhox.size() != h.size() || Brhoy.size() != h.size()
+                    || Brhoz.size() != h.size()) {
+                    shambase::throw_with_loc<std::runtime_error>(
+                        "the number of B values does not match the number of particles");
+                }
+
+                Tscal pmass        = phdump.read_header_floats<Tscal>("massoftype")[0];
+                Tscal hfact        = phdump.read_header_float<Tscal>("hfact");
+                Tscal inv_m_hfact3 = 1 / (pmass * hfact * hfact * hfact);
+
+                for (u64 i = 0; i < h.size(); i++) {
+                    Tscal inv_rho = (h[i] > 0) ? h[i] * h[i] * h[i] * inv_m_hfact3 : 0;
+                    Brhox[i] *= inv_rho;
+                    Brhoy[i] *= inv_rho;
+                    Brhoz[i] *= inv_rho;
+                }
+
+                if (shamcomm::world_rank() == 0) {
+                    logger::info_ln("Model", "phantom dump has B, converted to B/rho");
+                }
+            }
+        }
     } else if (
         shamcomm::world_rank() == 0
         && std::any_of(phdump.blocks.begin(), phdump.blocks.end(), [](auto &block) {
-               return block.has_field("B/rhox");
+               return block.has_field("B/rhox") || block.has_field("Bx");
            })) {
         logger::warn_ln(
-            "Model", "the phantom dump has B/rho fields but MHD is disabled, ignoring them");
+            "Model", "the phantom dump has B fields but MHD is disabled, ignoring them");
     }
 
     if (solver.solver_config.has_field_psi_on_ch()) {
         for (auto &block : phdump.blocks) {
             block.fill_vec("psi/ch", psich);
+        }
+
+        if (psich.empty()) {
+            for (auto &block : phdump.blocks) {
+                block.fill_vec("psi", psich);
+            }
+        }
+
+        if (!Brhox.empty() && psich.empty() && shamcomm::world_rank() == 0) {
+            logger::warn_ln(
+                "Model", "phantom dump has B but no psi/ch or psi, assuming psi/ch = 0");
         }
     }
 
