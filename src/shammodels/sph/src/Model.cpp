@@ -1541,6 +1541,24 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
             block.blocks_fort_real[psid].vals.push_back(ps_);
         }
     }
+
+    if (solver.solver_config.has_field_div_b()) {
+        std::vector<Tscal> divB = pdat.fetch_data<Tscal>("divB");
+        u64 divBid              = block.get_ref_f32("divB");
+        for (auto d_ : divB) {
+            block.blocks_f32[divBid].vals.push_back(d_);
+        }
+    }
+
+    if (solver.solver_config.has_field_mhd_diagnostics()) {
+        for (const char *name : {"mcurlB", "djvi2", "dudtAV", "dudtAR"}) {
+            std::vector<Tscal> vals = pdat.fetch_data<Tscal>(name);
+            u64 id                  = block.get_ref_f32(name);
+            for (auto v_ : vals) {
+                block.blocks_f32[id].vals.push_back(v_);
+            }
+        }
+    }
 }
 
 template<class Tvec, template<class> class SPHKernel>
