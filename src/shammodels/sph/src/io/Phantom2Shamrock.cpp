@@ -173,7 +173,7 @@ namespace shammodels::sph {
         });
 
         if (has_B_field) {
-            IMHD mhd{.sigma_mhd = 1, .gd = true};
+            IMHD mhd{.sigma_mhd = 1};
             if (phdump.has_header_entry("alphaB")) {
                 mhd.alpha_B = phdump.read_header_float<f64>("alphaB");
             }

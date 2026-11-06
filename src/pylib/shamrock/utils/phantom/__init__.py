@@ -100,7 +100,7 @@ def apply_in_params(cfg, dump, in_params):
                 alpha_B=alpha_B,
             )
         else:
-            cfg.set_IdealMHD(sigma_mhd=sigma_mhd, alpha_B=alpha_B, gd=True)
+            cfg.set_IdealMHD(sigma_mhd=sigma_mhd, alpha_B=alpha_B, gd=mhd["gd"])
 
     rkill = in_params.get("rkill", -1.0)
     if rkill > 0:
@@ -125,7 +125,12 @@ def apply_in_params(cfg, dump, in_params):
 
 
 def load_simulation(
-    simulation_path, dump_file_name=None, in_file_name=None, do_print=True, sph_kernel="M4"
+    simulation_path,
+    dump_file_name=None,
+    in_file_name=None,
+    do_print=True,
+    sph_kernel="M4",
+    gd=False,
 ):
     """
     Load a Phantom simulation into a Shamrock model.
@@ -170,6 +175,12 @@ def load_simulation(
     cfg = model.gen_config_from_phantom_dump(dump)
     if in_params is not None:
         apply_in_params(cfg, dump, in_params)
+    if gd:
+        mhd = cfg.to_json()["mhd_config"]
+        if mhd["mhd_type"] == "ideal_mhd_constrained_hyper_para":
+            cfg.set_IdealMHD(sigma_mhd=mhd["sigma_mhd"], alpha_B=mhd["alpha_B"], gd=True)
+        elif shamrock.sys.world_rank() == 0:
+            print("Warning: gd=True requires ideal MHD, ignoring it")
     if do_print and shamrock.sys.world_rank() == 0:
         print(" - Setting Shamrock solver config")
     # Set the solver config to be the one stored in cfg
@@ -204,7 +215,7 @@ def load_simulation(
     return ctx, model, in_params
 
 
-def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
+def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4", gd=False):
     """
     Run a Phantom simulation in Shamrock.
     """
@@ -212,7 +223,7 @@ def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
     input_file_name = sim_name + ".in"
 
     ctx, model, in_params = shamrock.utils.phantom.load_simulation(
-        simulation_folder, in_file_name=input_file_name, sph_kernel=sph_kernel
+        simulation_folder, in_file_name=input_file_name, sph_kernel=sph_kernel, gd=gd
     )
 
     dump_file_name = in_params["dumpfile"]
