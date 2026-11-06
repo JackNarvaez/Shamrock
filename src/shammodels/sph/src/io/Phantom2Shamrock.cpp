@@ -154,6 +154,42 @@ namespace shammodels::sph {
     /// explicit instanciation for f64_3
     template AVConfig<f64_3> get_shamrock_avconfig<f64_3>(PhantomDump &phdump);
 
+    template<class Tvec>
+    MHDConfig<Tvec> get_shamrock_mhdconfig(PhantomDump &phdump) {
+        using IMHD = typename MHDConfig<Tvec>::IdealMhdConstrainedHyperPara;
+
+        MHDConfig<Tvec> cfg{};
+
+        const std::string tag_Bx = sham::format("{:16s}", "B/rhox");
+        auto has_tag             = [&](auto &arrays) {
+            for (auto &arr : arrays) {
+                if (arr.tag == tag_Bx) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        bool has_B_field = false;
+        for (auto &block : phdump.blocks) {
+            has_B_field = has_B_field || has_tag(block.blocks_fort_real)
+                          || has_tag(block.blocks_f32) || has_tag(block.blocks_f64);
+        }
+
+        if (has_B_field) {
+            IMHD mhd{};
+            mhd.sigma_mhd = 1;
+            cfg.set(mhd);
+        }
+
+        return cfg;
+    }
+
+    /// explicit instanciation for f32_3
+    template MHDConfig<f32_3> get_shamrock_mhdconfig<f32_3>(PhantomDump &phdump);
+    /// explicit instanciation for f64_3
+    template MHDConfig<f64_3> get_shamrock_mhdconfig<f64_3>(PhantomDump &phdump);
+
     namespace {
         // Phantom stores its unit headers (udist, umass, utime, umagfd) in cgs,
         // while shamunits::UnitSystem is built from SI base units.
