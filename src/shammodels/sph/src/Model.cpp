@@ -1585,7 +1585,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block(
 
 template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
-    PhantomDumpBlock &block, shamrock::patch::PatchDataLayer &pdat) {
+    PhantomDumpBlock &block, shamrock::patch::PatchDataLayer &pdat, Tscal sqrt_mu_0) {
 
     std::vector<Tvec> Brhoxyz = pdat.fetch_data<Tvec>("B/rho");
 
@@ -1594,9 +1594,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
     u64 Brhozid = block.get_ref_fort_real("B/rhoz");
 
     for (auto vec : Brhoxyz) {
-        block.blocks_fort_real[Brhoxid].vals.push_back(vec.x());
-        block.blocks_fort_real[Brhoyid].vals.push_back(vec.y());
-        block.blocks_fort_real[Brhozid].vals.push_back(vec.z());
+        block.blocks_fort_real[Brhoxid].vals.push_back(vec.x() / sqrt_mu_0);
+        block.blocks_fort_real[Brhoyid].vals.push_back(vec.y() / sqrt_mu_0);
+        block.blocks_fort_real[Brhozid].vals.push_back(vec.z() / sqrt_mu_0);
     }
 
     block.tot_count = block.blocks_fort_real[Brhoxid].vals.size();
@@ -1605,7 +1605,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
         std::vector<Tscal> psich = pdat.fetch_data<Tscal>("psi/ch");
         u64 psid                 = block.get_ref_fort_real("psi/ch");
         for (auto ps_ : psich) {
-            block.blocks_fort_real[psid].vals.push_back(ps_);
+            block.blocks_fort_real[psid].vals.push_back(ps_ / sqrt_mu_0);
         }
     }
 
@@ -1613,7 +1613,7 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
         std::vector<Tscal> divB = pdat.fetch_data<Tscal>("divB");
         u64 divBid              = block.get_ref_f32("divB");
         for (auto d_ : divB) {
-            block.blocks_f32[divBid].vals.push_back(d_);
+            block.blocks_f32[divBid].vals.push_back(d_ / sqrt_mu_0);
         }
     }
 
@@ -1621,8 +1621,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
         for (const char *name : {"mcurlB", "djvi2", "dudtAV", "dudtAR"}) {
             std::vector<Tscal> vals = pdat.fetch_data<Tscal>(name);
             u64 id                  = block.get_ref_f32(name);
+            const Tscal scale       = (std::string(name) == "mcurlB") ? sqrt_mu_0 : Tscal(1);
             for (auto v_ : vals) {
-                block.blocks_f32[id].vals.push_back(v_);
+                block.blocks_f32[id].vals.push_back(v_ / scale);
             }
         }
     }
@@ -1755,6 +1756,8 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     write_shamrock_units_in_phantom_dump(solver.solver_config.unit_sys, dump, bypass_error_check);
 
     const bool write_mhd = solver.solver_config.has_field_b_on_rho();
+    const Tscal sqrt_mu_0
+        = (write_mhd) ? sycl::sqrt(solver.solver_config.get_constant_mu_0()) : Tscal(1);
 
     PhantomDumpBlock block_part;
     PhantomDumpBlock block_mhd;
@@ -1769,7 +1772,7 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
         for (auto &dat : gathered) {
             add_pdat_to_phantom_block(block_part, shambase::get_check_ref(dat));
             if (write_mhd) {
-                add_pdat_to_phantom_block_mhd(block_mhd, shambase::get_check_ref(dat));
+                add_pdat_to_phantom_block_mhd(block_mhd, shambase::get_check_ref(dat), sqrt_mu_0);
             }
             dat.reset();
         }
