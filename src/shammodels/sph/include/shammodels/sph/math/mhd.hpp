@@ -204,7 +204,8 @@ namespace shamrock::sph::mhd {
         Tscal omega_a,
         Tscal omega_b,
         Tscal Fab_a,
-        Tscal Fab_b) {
+        Tscal Fab_b,
+        Tscal mu_0) {
 
         Tscal B_ab_sq = sycl::dot(B_a - B_b, B_a - B_b);
 
@@ -214,7 +215,7 @@ namespace shamrock::sph::mhd {
         Tscal acc_a = Fab_a * sham::inv_sat_zero(sub_fact_a);
         Tscal acc_b = Fab_b * sham::inv_sat_zero(sub_fact_b);
 
-        Tscal artres = -0.25 * m_b * vsigb * (acc_a + acc_b) * B_ab_sq;
+        Tscal artres = -0.25 * m_b * vsigb * (acc_a + acc_b) * B_ab_sq / mu_0;
         return artres;
     }
 
@@ -417,7 +418,8 @@ namespace shamrock::sph::mhd {
                      omega_a,
                      omega_b,
                      Fab_a,
-                     Fab_b);
+                     Fab_b,
+                     mu_0);
 
         // end du/dt terms
 
