@@ -28,18 +28,18 @@ namespace {
 
     /// The EOS config of phantom
     struct EOSPhConfig {
-        i32 isink;
-        f64 gamma = 1;
-        f64 polyk;
-        f64 polyk2;
+        i32 isink     = 0;
+        f64 gamma     = 1;
+        f64 polyk     = 0;
+        f64 polyk2    = 0;
         f64 qfacdisc  = 0.75;
         f64 qfacdisc2 = 0.75;
 
         // if (ieos == 7) {
-        int istrat;
-        f64 alpha_z;
-        f64 beta_z;
-        f64 z0;
+        int istrat  = 0;
+        f64 alpha_z = 0;
+        f64 beta_z  = 0;
+        f64 z0      = 0;
         //}
     };
 
