@@ -88,11 +88,19 @@ def apply_in_params(cfg, dump, in_params):
     )
 
     if cfg.has_field_b_on_rho():
-        cfg.set_IdealMHD(
-            sigma_mhd=in_params.get("psidecayfac", 1.0),
-            alpha_B=from_in_or_dump("alphaB", 1.0),
-            gd=True,
-        )
+        sigma_mhd = in_params.get("psidecayfac", 1.0)
+        alpha_B = from_in_or_dump("alphaB", 1.0)
+        mhd = cfg.to_json()["mhd_config"]
+        if mhd["mhd_type"] == "non_ideal_mhd":
+            cfg.set_NonIdealMHD(
+                sigma_mhd=sigma_mhd,
+                etaO=mhd["etaO"],
+                etaH=mhd["etaH"],
+                etaAD=mhd["etaAD"],
+                alpha_B=alpha_B,
+            )
+        else:
+            cfg.set_IdealMHD(sigma_mhd=sigma_mhd, alpha_B=alpha_B, gd=True)
 
     rkill = in_params.get("rkill", -1.0)
     if rkill > 0:
