@@ -146,7 +146,10 @@ namespace shammodels::sph {
     AVConfig<Tvec> get_shamrock_avconfig(PhantomDump &phdump) {
         AVConfig<Tvec> cfg{};
 
-        cfg.set_varying_cd10(0, 1, 0.1, phdump.read_header_float<f64>("alphau"), 2);
+        f64 alpha_min
+            = (phdump.has_header_entry("alpha")) ? phdump.read_header_float<f64>("alpha") : 0;
+
+        cfg.set_varying_cd10(alpha_min, 1, 0.1, phdump.read_header_float<f64>("alphau"), 2);
 
         return cfg;
     }
@@ -167,7 +170,11 @@ namespace shammodels::sph {
         });
 
         if (has_B_field) {
-            cfg.set(IMHD{.sigma_mhd = 1});
+            IMHD mhd{.sigma_mhd = 1};
+            if (phdump.has_header_entry("alphaB")) {
+                mhd.alpha_B = phdump.read_header_float<f64>("alphaB");
+            }
+            cfg.set(mhd);
         }
 
         return cfg;

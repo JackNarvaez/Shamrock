@@ -1680,9 +1680,38 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     dump.table_header_fort_real.add("tolh", 0.0001);
     dump.table_header_fort_real.add("C_cour", solver.solver_config.cfl_config.cfl_cour);
     dump.table_header_fort_real.add("C_force", solver.solver_config.cfl_config.cfl_force);
-    dump.table_header_fort_real.add("alpha", 0);
-    dump.table_header_fort_real.add("alphau", 1);
-    dump.table_header_fort_real.add("alphaB", 1);
+    Tscal alpha_AV = 0;
+    Tscal alpha_u  = 1;
+    Tscal alpha_B  = 1;
+
+    using AV  = typename SolverConfig::AVConfig;
+    using MHD = typename SolverConfig::MHDConfig;
+    auto &av  = solver.solver_config.artif_viscosity.config;
+    auto &mhd = solver.solver_config.mhd_config.configMHD;
+
+    if (auto *v = std::get_if<typename AV::Constant>(&av)) {
+        alpha_AV = v->alpha_AV;
+        alpha_u  = v->alpha_u;
+    } else if (auto *v = std::get_if<typename AV::VaryingMM97>(&av)) {
+        alpha_AV = v->alpha_min;
+        alpha_u  = v->alpha_u;
+    } else if (auto *v = std::get_if<typename AV::VaryingCD10>(&av)) {
+        alpha_AV = v->alpha_min;
+        alpha_u  = v->alpha_u;
+    } else if (auto *v = std::get_if<typename AV::ConstantDisc>(&av)) {
+        alpha_AV = v->alpha_AV;
+        alpha_u  = v->alpha_u;
+    }
+
+    if (auto *v = std::get_if<typename MHD::IdealMhdConstrainedHyperPara>(&mhd)) {
+        alpha_B = v->alpha_B;
+    } else if (auto *v = std::get_if<typename MHD::NonIdealMHD>(&mhd)) {
+        alpha_B = v->alpha_B;
+    }
+
+    dump.table_header_fort_real.add("alpha", alpha_AV);
+    dump.table_header_fort_real.add("alphau", alpha_u);
+    dump.table_header_fort_real.add("alphaB", alpha_B);
 
     dump.table_header_fort_real.add("massoftype", solver.solver_config.gpart_mass);
     dump.table_header_fort_real.add("massoftype", 0);
