@@ -1768,9 +1768,12 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             py::arg("hpart_fact_load") = 1.0)
         .def(
             "make_phantom_dump",
-            [](T &self) {
-                return self.make_phantom_dump();
-            })
+            [](T &self, std::optional<Tscal> dtmax, i32 idumpfile) {
+                return self.make_phantom_dump(dtmax, idumpfile);
+            },
+            py::kw_only(),
+            py::arg("dtmax")     = std::nullopt,
+            py::arg("idumpfile") = 0)
         .def("do_vtk_dump", &T::do_vtk_dump)
         .def("set_debug_dump", &T::set_debug_dump)
         .def("solver_logs_last_rate", &T::solver_logs_last_rate)

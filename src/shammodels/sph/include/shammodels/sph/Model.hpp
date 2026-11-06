@@ -41,6 +41,7 @@
 #include "shamsys/legacy/log.hpp"
 #include "shamtree/kernels/geometry_utils.hpp"
 #include <pybind11/functional.h>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -128,7 +129,8 @@ namespace shammodels::sph {
 
         SolverConfig gen_config_from_phantom_dump(PhantomDump &phdump, bool bypass_error);
         void init_from_phantom_dump(PhantomDump &phdump, Tscal hpart_fact_load = 1.0);
-        PhantomDump make_phantom_dump();
+        PhantomDump make_phantom_dump(
+            std::optional<Tscal> dtmax = std::nullopt, i32 idumpfile = 0);
 
         void do_vtk_dump(std::string filename, bool add_patch_world_id) {
             solver.vtk_do_dump(filename, add_patch_world_id);

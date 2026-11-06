@@ -1629,7 +1629,8 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
 }
 
 template<class Tvec, template<class> class SPHKernel>
-shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phantom_dump() {
+shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phantom_dump(
+    std::optional<Tscal> dtmax, i32 idumpfile) {
     StackEntry stack_loc{};
 
     PhantomDump dump;
@@ -1674,7 +1675,7 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     dump.table_header_fort_int.add("idust", 7);
     dump.table_header_fort_int.add("idtmax_n", 1);
     dump.table_header_fort_int.add("idtmax_frac", 0);
-    dump.table_header_fort_int.add("idumpfile", 0);
+    dump.table_header_fort_int.add("idumpfile", idumpfile);
     dump.table_header_fort_int.add("majorv", 2023);
     dump.table_header_fort_int.add("minorv", 0);
     dump.table_header_fort_int.add("microv", 0);
@@ -1685,7 +1686,7 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
     write_shamrock_eos_in_phantom_dump(solver.solver_config.eos_config, dump, bypass_error_check);
 
     dump.table_header_fort_real.add("time", solver.get_time());
-    dump.table_header_fort_real.add("dtmax", solver.get_dt_sph());
+    dump.table_header_fort_real.add("dtmax", dtmax.value_or(solver.get_dt_sph()));
 
     dump.table_header_fort_real.add("rhozero", 0);
     dump.table_header_fort_real.add("hfact", Kernel::hfactd);
