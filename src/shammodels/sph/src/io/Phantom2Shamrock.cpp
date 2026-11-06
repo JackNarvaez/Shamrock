@@ -160,26 +160,12 @@ namespace shammodels::sph {
 
         MHDConfig<Tvec> cfg{};
 
-        const std::string tag_Bx = sham::format("{:16s}", "B/rhox");
-        auto has_tag             = [&](auto &arrays) {
-            for (auto &arr : arrays) {
-                if (arr.tag == tag_Bx) {
-                    return true;
-                }
-            }
-            return false;
-        };
-
-        bool has_B_field = false;
-        for (auto &block : phdump.blocks) {
-            has_B_field = has_B_field || has_tag(block.blocks_fort_real)
-                          || has_tag(block.blocks_f32) || has_tag(block.blocks_f64);
-        }
+        bool has_B_field = std::any_of(phdump.blocks.begin(), phdump.blocks.end(), [](auto &block) {
+            return block.has_field("B/rhox");
+        });
 
         if (has_B_field) {
-            IMHD mhd{};
-            mhd.sigma_mhd = 1;
-            cfg.set(mhd);
+            cfg.set(IMHD{.sigma_mhd = 1});
         }
 
         return cfg;

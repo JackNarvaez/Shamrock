@@ -20,6 +20,7 @@
 #include "shambase/fortran_io.hpp"
 #include "shambase/string.hpp"
 #include <unordered_map>
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <optional>
@@ -332,6 +333,27 @@ namespace shammodels::sph {
             for (auto &tmp : blocks_f64) {
                 tmp.fill_vec(field_name, vec);
             }
+        }
+
+        /**
+         * @brief Checks whether the block contains a field with the given name
+         *
+         * @param field_name the name of the field to look for
+         * @return true if the field is present
+         */
+        bool has_field(std::string field_name) const {
+
+            field_name = sham::format("{:16s}", field_name);
+
+            auto has = [&](const auto &arrays) {
+                return std::any_of(arrays.begin(), arrays.end(), [&](const auto &arr) {
+                    return arr.tag == field_name;
+                });
+            };
+
+            return has(blocks_fort_int) || has(blocks_i8) || has(blocks_i16) || has(blocks_i32)
+                   || has(blocks_i64) || has(blocks_fort_real) || has(blocks_f32)
+                   || has(blocks_f64);
         }
     };
 

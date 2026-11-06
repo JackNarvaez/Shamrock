@@ -1220,12 +1220,12 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
 
     std::string log = "";
 
-    std::vector<Tvec> xyz, vxyz, Brhoxyz;
-    std::vector<Tscal> h, u, alpha, psich;
+    std::vector<Tvec> xyz, vxyz;
+    std::vector<Tscal> h, u, alpha;
+    std::vector<Tscal> Brhox, Brhoy, Brhoz, psich;
 
     {
         std::vector<Tscal> x, y, z, vx, vy, vz;
-        std::vector<Tscal> Brhox, Brhoy, Brhoz;
 
         phdump.blocks[0].fill_vec("x", x);
         phdump.blocks[0].fill_vec("y", y);
@@ -1272,28 +1272,33 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
         phdump.blocks[0].fill_vec("u", u);
         phdump.blocks[0].fill_vec("alpha", alpha);
 
-        for (auto &block : phdump.blocks) {
-            block.fill_vec("B/rhox", Brhox);
-            block.fill_vec("B/rhoy", Brhoy);
-            block.fill_vec("B/rhoz", Brhoz);
-            block.fill_vec("psi/ch", psich);
-        }
-
         for (u32 i = 0; i < x.size(); i++) {
             xyz.push_back({x[i], y[i], z[i]});
         }
         for (u32 i = 0; i < vx.size(); i++) {
             vxyz.push_back({vx[i], vy[i], vz[i]});
         }
-        for (u32 i = 0; i < Brhox.size(); i++) {
-            Brhoxyz.push_back({Brhox[i], Brhoy[i], Brhoz[i]});
-        }
     }
 
-    if (Brhoxyz.size() > 0 && !solver.solver_config.has_field_b_on_rho()
-        && shamcomm::world_rank() == 0) {
+    if (solver.solver_config.has_field_b_on_rho()) {
+        for (auto &block : phdump.blocks) {
+            block.fill_vec("B/rhox", Brhox);
+            block.fill_vec("B/rhoy", Brhoy);
+            block.fill_vec("B/rhoz", Brhoz);
+        }
+    } else if (
+        shamcomm::world_rank() == 0
+        && std::any_of(phdump.blocks.begin(), phdump.blocks.end(), [](auto &block) {
+               return block.has_field("B/rhox");
+           })) {
         logger::warn_ln(
             "Model", "the phantom dump has B/rho fields but MHD is disabled, ignoring them");
+    }
+
+    if (solver.solver_config.has_field_psi_on_ch()) {
+        for (auto &block : phdump.blocks) {
+            block.fill_vec("psi/ch", psich);
+        }
     }
 
     // Load time infos
@@ -1368,9 +1373,9 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
                     ins_alpha.push_back(alpha[i]);
                 }
             }
-            if (Brhoxyz.size() > 0) {
+            if (Brhox.size() > 0) {
                 for (u64 i : sel_index) {
-                    ins_Brhoxyz.push_back(Brhoxyz[i]);
+                    ins_Brhoxyz.push_back({Brhox[i], Brhoy[i], Brhoz[i]});
                 }
             }
             if (psich.size() > 0) {
@@ -1395,11 +1400,11 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
                 ptmp.override_patch_field("uint", ins_u);
             }
 
-            if (ins_Brhoxyz.size() > 0 && solver.solver_config.has_field_b_on_rho()) {
+            if (ins_Brhoxyz.size() > 0) {
                 ptmp.override_patch_field("B/rho", ins_Brhoxyz);
             }
 
-            if (ins_psich.size() > 0 && solver.solver_config.has_field_psi_on_ch()) {
+            if (ins_psich.size() > 0) {
                 ptmp.override_patch_field("psi/ch", ins_psich);
             }
 
@@ -1515,21 +1520,19 @@ template<class Tvec, template<class> class SPHKernel>
 void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
     PhantomDumpBlock &block, shamrock::patch::PatchDataLayer &pdat) {
 
-    if (solver.solver_config.has_field_b_on_rho()) {
-        std::vector<Tvec> Brhoxyz = pdat.fetch_data<Tvec>("B/rho");
+    std::vector<Tvec> Brhoxyz = pdat.fetch_data<Tvec>("B/rho");
 
-        u64 Brhoxid = block.get_ref_fort_real("B/rhox");
-        u64 Brhoyid = block.get_ref_fort_real("B/rhoy");
-        u64 Brhozid = block.get_ref_fort_real("B/rhoz");
+    u64 Brhoxid = block.get_ref_fort_real("B/rhox");
+    u64 Brhoyid = block.get_ref_fort_real("B/rhoy");
+    u64 Brhozid = block.get_ref_fort_real("B/rhoz");
 
-        for (auto vec : Brhoxyz) {
-            block.blocks_fort_real[Brhoxid].vals.push_back(vec.x());
-            block.blocks_fort_real[Brhoyid].vals.push_back(vec.y());
-            block.blocks_fort_real[Brhozid].vals.push_back(vec.z());
-        }
-
-        block.tot_count = block.blocks_fort_real[Brhoxid].vals.size();
+    for (auto vec : Brhoxyz) {
+        block.blocks_fort_real[Brhoxid].vals.push_back(vec.x());
+        block.blocks_fort_real[Brhoyid].vals.push_back(vec.y());
+        block.blocks_fort_real[Brhozid].vals.push_back(vec.z());
     }
+
+    block.tot_count = block.blocks_fort_real[Brhoxid].vals.size();
 
     if (solver.solver_config.has_field_psi_on_ch()) {
         std::vector<Tscal> psich = pdat.fetch_data<Tscal>("psi/ch");
@@ -1636,6 +1639,8 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
 
     write_shamrock_units_in_phantom_dump(solver.solver_config.unit_sys, dump, bypass_error_check);
 
+    const bool write_mhd = solver.solver_config.has_field_b_on_rho();
+
     PhantomDumpBlock block_part;
     PhantomDumpBlock block_mhd;
 
@@ -1648,7 +1653,10 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
 
         for (auto &dat : gathered) {
             add_pdat_to_phantom_block(block_part, shambase::get_check_ref(dat));
-            add_pdat_to_phantom_block_mhd(block_mhd, shambase::get_check_ref(dat));
+            if (write_mhd) {
+                add_pdat_to_phantom_block_mhd(block_mhd, shambase::get_check_ref(dat));
+            }
+            dat.reset();
         }
     }
 
@@ -1688,7 +1696,7 @@ shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phant
         }
     }
 
-    if (solver.solver_config.has_field_b_on_rho()) {
+    if (write_mhd) {
         dump.blocks.push_back(PhantomDumpBlock{});
         dump.blocks.push_back(std::move(block_mhd));
     }
