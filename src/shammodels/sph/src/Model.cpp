@@ -1260,6 +1260,11 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
             // expand the box
             d *= box_tolerance;
 
+            if (shamcomm::world_rank() == 0) {
+                logger::info_ln(
+                    "Model", "Box domain (from particles): center = ", center, ", half-size = ", d);
+            }
+
             resize_simulation_box({center - d, center + d});
         }
 
