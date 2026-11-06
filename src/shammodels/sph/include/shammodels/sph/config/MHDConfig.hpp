@@ -38,7 +38,7 @@ struct shammodels::sph::MHDConfig {
     struct None {};
 
     struct IdealMhdConstrainedHyperPara {
-        Tscal sigma_mhd = 0.1;
+        Tscal sigma_mhd = 1.;
         Tscal alpha_B   = 1.;
         bool gd         = false;
     };
