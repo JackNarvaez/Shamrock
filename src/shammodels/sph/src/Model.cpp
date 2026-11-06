@@ -1297,6 +1297,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
         }
     }
 
+    const Tscal sqrt_mu_0 = (solver.solver_config.has_field_b_on_rho())
+                                ? sycl::sqrt(solver.solver_config.get_constant_mu_0())
+                                : Tscal(1);
+
     if (solver.solver_config.has_field_b_on_rho()) {
         for (auto &block : phdump.blocks) {
             block.fill_vec("B/rhox", Brhox);
@@ -1337,6 +1341,12 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
                 logger::info_ln("Model", "phantom dump has B, converted to B/rho");
             }
         }
+
+        for (u64 i = 0; i < Brhox.size(); i++) {
+            Brhox[i] *= sqrt_mu_0;
+            Brhoy[i] *= sqrt_mu_0;
+            Brhoz[i] *= sqrt_mu_0;
+        }
     } else if (
         shamcomm::world_rank() == 0
         && std::any_of(phdump.blocks.begin(), phdump.blocks.end(), [](auto &block) {
@@ -1360,6 +1370,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::init_from_phantom_dump(
         if (!psich.empty() && psich.size() != h.size()) {
             shambase::throw_with_loc<std::runtime_error>(
                 "the number of psi values does not match the number of particles");
+        }
+
+        for (Tscal &ps_ : psich) {
+            ps_ *= sqrt_mu_0;
         }
 
         if (!Brhox.empty() && psich.empty() && shamcomm::world_rank() == 0) {
