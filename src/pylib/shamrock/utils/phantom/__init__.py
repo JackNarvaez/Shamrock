@@ -232,14 +232,15 @@ def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4"):
         dump.save_dump(get_ph_dump_name(dump_number))
 
         # replace dumpfile in the input file
-        lines = []
-        with open(os.path.join(simulation_folder, f"{sim_name}.in"), "r") as f:
-            lines = f.readlines()
-        with open(os.path.join(simulation_folder, f"{sim_name}.in"), "w") as f:
-            for line in lines:
-                if "dumpfile" in line:
-                    line = f"            dumpfile = {get_ph_dump_file_name(dump_number)}  ! dump file to start from\n"
-                f.write(line)
+        if shamrock.sys.world_rank() == 0:
+            lines = []
+            with open(os.path.join(simulation_folder, f"{sim_name}.in"), "r") as f:
+                lines = f.readlines()
+            with open(os.path.join(simulation_folder, f"{sim_name}.in"), "w") as f:
+                for line in lines:
+                    if "dumpfile" in line:
+                        line = f"            dumpfile = {get_ph_dump_file_name(dump_number)}  ! dump file to start from\n"
+                    f.write(line)
 
         # if .tmp is there remove it
         if (
