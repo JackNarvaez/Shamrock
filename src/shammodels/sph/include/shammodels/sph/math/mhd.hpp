@@ -176,6 +176,20 @@ namespace shamrock::sph::mhd {
         return magnetic_tension_term;
     }
 
+    template<class Tvec, class Tscal>
+    inline Tscal fdiv_b_beta_factor(Tscal P_a, Tvec B_a, Tscal mu_0) {
+        Tscal B2_inv = sham::inv_sat_zero(sycl::dot(B_a, B_a));
+        if (B2_inv > 0) {
+            Tscal beta = 2 * mu_0 * P_a * B2_inv;
+            if (beta < 2) {
+                return 1;
+            } else if (beta < 10) {
+                return (10 - beta) * 0.125;
+            }
+        }
+        return 0;
+    }
+
     template<class Tvec, class Tscal, MHDType mhd_mode = Ideal>
     inline Tvec fdiv_b(
         Tscal m_b,
@@ -185,12 +199,12 @@ namespace shamrock::sph::mhd {
         Tvec nabla_Wab_hb,
         Tscal sub_fact_a,
         Tscal sub_fact_b,
+        Tscal frac_divB,
         Tscal mu_0) {
 
         Tscal acc_fdivB_a = sycl::dot(B_a, nabla_Wab_ha) * sham::inv_sat_zero(sub_fact_a);
         Tscal acc_fdivB_b = sycl::dot(B_b, nabla_Wab_hb) * sham::inv_sat_zero(sub_fact_b);
-        return -0.5 * B_a * m_b * (acc_fdivB_a + acc_fdivB_b)
-               / mu_0; // tested, this is what works best
+        return -frac_divB * B_a * m_b * (acc_fdivB_a + acc_fdivB_b) / mu_0;
     }
 
     template<class Tvec, class Tscal>
@@ -312,6 +326,7 @@ namespace shamrock::sph::mhd {
         Tscal h_b,
 
         Tscal alpha_B,
+        Tscal frac_divB,
 
         Tvec B_a,
         Tvec B_b,
@@ -371,7 +386,15 @@ namespace shamrock::sph::mhd {
 
         // dv/dt terms
         sum_fdivB += fdiv_b(
-            pmass, B_a, B_b, r_ab_unit * dWab_a, r_ab_unit * dWab_b, sub_fact_a, sub_fact_b, mu_0);
+            pmass,
+            B_a,
+            B_b,
+            r_ab_unit * dWab_a,
+            r_ab_unit * dWab_b,
+            sub_fact_a,
+            sub_fact_b,
+            frac_divB,
+            mu_0);
 
         sum_mag_tension += -b_dot_grad_w(
             pmass,

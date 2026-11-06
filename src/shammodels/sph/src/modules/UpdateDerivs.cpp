@@ -1254,6 +1254,8 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
         sham::DeviceBuffer<Tscal> &buf_omega = mpdat.get_field_buf_ref<Tscal>(iomega_interf);
         sham::DeviceBuffer<Tscal> &buf_cs
             = shambase::get_check_ref(storage.soundspeed).get_field(cur_p.id_patch).get_buf();
+        sham::DeviceBuffer<Tscal> &buf_pressure
+            = shambase::get_check_ref(storage.pressure).get_field(cur_p.id_patch).get_buf();
 
         sham::DeviceBuffer<Tvec> &buf_dB_on_rho   = pdat.get_field_buf_ref<Tvec>(idB_on_rho);
         sham::DeviceBuffer<Tscal> &buf_dpsi_on_ch = pdat.get_field_buf_ref<Tscal>(idpsi_on_ch);
@@ -1281,6 +1283,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
         auto hpart      = buf_hpart.get_read_access(depends_list);
         auto omega      = buf_omega.get_read_access(depends_list);
         auto cs         = buf_cs.get_read_access(depends_list);
+        auto pressure   = buf_pressure.get_read_access(depends_list);
         auto B_on_rho   = buf_B_on_rho.get_read_access(depends_list);
         auto psi_on_ch  = buf_psi_on_ch.get_read_access(depends_list);
         auto dB_on_rho  = buf_dB_on_rho.get_write_access(depends_list);
@@ -1375,6 +1378,9 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                 Tscal v_shock_a  = sycl::sqrt(cs_a * cs_a + v_alfven_a * v_alfven_a);
                 Tscal psi_a      = psi_on_ch[id_a] * v_shock_a;
 
+                Tscal frac_divB_a = shamrock::sph::mhd::fdiv_b_beta_factor<Tvec, Tscal>(
+                    pressure[id_a], B_a, mu_0);
+
                 Tvec force_mhd{0, 0, 0};
                 Tscal tmpdU_mhd = 0;
                 Tvec magnetic_eq{0, 0, 0};
@@ -1432,6 +1438,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                         h_a,
                         h_b,
                         _alpha_B,
+                        frac_divB_a,
                         B_a,
                         B_b,
                         J_a,
@@ -1504,6 +1511,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
         buf_hpart.complete_event_state(e);
         buf_omega.complete_event_state(e);
         buf_cs.complete_event_state(e);
+        buf_pressure.complete_event_state(e);
         buf_B_on_rho.complete_event_state(e);
         buf_psi_on_ch.complete_event_state(e);
         buf_dB_on_rho.complete_event_state(e);
