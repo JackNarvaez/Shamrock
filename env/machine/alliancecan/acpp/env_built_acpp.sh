@@ -1,18 +1,27 @@
 # Everything before this line will be provided by the new-env script
 
-export ACPP_VERSION=v25.02.0
-export ACPP_APPDB_DIR=/tmp/acpp-appdb # otherwise it would we in the $HOME/.acpp
+module load StdEnv/2023 llvm/20.1.8
+module load nvhpc/25.1 openmpi/5.0.3 cuda/12.6
+
+export ACPP_VERSION=v25.10.0
 export ACPP_GIT_DIR=$BUILD_DIR/.env/acpp-git
 export ACPP_BUILD_DIR=$BUILD_DIR/.env/acpp-builddir
-export ACPP_INSTALL_DIR=$HOME/apps/adaptivecpp/25.02.0
+export ACPP_INSTALL_DIR=$BUILD_DIR/.env/acpp-installdir
 
-export PATH=$HOME/apps/adaptivecpp/25.02.0/bin:$PATH
-export LD_LIBRARY_PATH=$HOME/apps/adaptivecpp/25.02.0/lib:$LD_LIBRARY_PATH
-export CMAKE_PREFIX_PATH=$HOME/apps/adaptivecpp/25.02.0:$CMAKE_PREFIX_PATH
+export PATH=$ACPP_INSTALL_DIR/bin:$PATH
+export LD_LIBRARY_PATH=$ACPP_INSTALL_DIR/lib:$LD_LIBRARY_PATH
+export CMAKE_PREFIX_PATH=$ACPP_INSTALL_DIR:$CMAKE_PREFIX_PATH
+
+export SHAM_MPI_INIT_STRATEGY=mpifirst
 
 function setupcompiler {
     clone_acpp || return
-    cmake -S ${ACPP_GIT_DIR} -B ${ACPP_BUILD_DIR} -DCMAKE_INSTALL_PREFIX=${ACPP_INSTALL_DIR} || return
+    cmake -S ${ACPP_GIT_DIR} -B ${ACPP_BUILD_DIR} \
+        -DCMAKE_INSTALL_PREFIX=${ACPP_INSTALL_DIR} \
+        -DCMAKE_C_COMPILER=clang \
+        -DCMAKE_CXX_COMPILER=clang++ \
+        -DACPP_LLD_PATH=/cvmfs/soft.computecanada.ca/gentoo/2023/x86-64-v3/usr/bin/ld.lld \
+        -DWITH_CUDA_BACKEND=ON || return
     (cd ${ACPP_BUILD_DIR} && $MAKE_EXEC "${MAKE_OPT[@]}" && $MAKE_EXEC install) || return
 }
 
@@ -32,6 +41,7 @@ function shamconfigure {
         -DCMAKE_CXX_FLAGS="${SHAMROCK_CXX_FLAGS}" \
         -DACPP_PATH="${ACPP_INSTALL_DIR}" \
         -DCMAKE_BUILD_TYPE="${SHAMROCK_BUILD_TYPE}" \
+        -DCXX_FLAG_ARCH_NATIVE=off \
         -DBUILD_TEST=Yes \
         "${CMAKE_OPT[@]}" || return
 }

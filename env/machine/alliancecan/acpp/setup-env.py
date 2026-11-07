@@ -25,6 +25,12 @@ def setup(arg: SetupArg, envgen: EnvGen):
     parser.add_argument("--backend", action="store", help="sycl backend to use")
     parser.add_argument("--arch", action="store", help="arch to build")
     parser.add_argument("--gen", action="store", help="generator to use (ninja or make)")
+    parser.add_argument(
+        "--march",
+        action="store",
+        help="CPU arch of the compute nodes, e.g. sapphirerapids, znver4, x86-64-v4 "
+        "(default: no -march, generic x86-64)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -42,6 +48,10 @@ def setup(arg: SetupArg, envgen: EnvGen):
     elif lib_mode == "object":
         cmake_extra_args += " -DSHAMROCK_USE_SHARED_LIB=Off"
 
+    shamcxx_flags = f" --acpp-targets='{acpp_target}'"
+    if args.march is not None:
+        shamcxx_flags += f" -march={args.march}"
+
     envgen.export_list = {
         "SHAMROCK_DIR": shamrockdir,
         "BUILD_DIR": builddir,
@@ -50,7 +60,7 @@ def setup(arg: SetupArg, envgen: EnvGen):
         "MAKE_OPT": f"({gen_opt})",
         "CMAKE_OPT": f"({cmake_extra_args})",
         "SHAMROCK_BUILD_TYPE": f"'{cmake_build_type}'",
-        "SHAMROCK_CXX_FLAGS": "\" --acpp-targets='" + acpp_target + "'\"",
+        "SHAMROCK_CXX_FLAGS": f'"{shamcxx_flags}"',
     }
 
     envgen.ext_script_list = [
