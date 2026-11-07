@@ -1,7 +1,8 @@
 # Everything before this line will be provided by the new-env script
 
-module load StdEnv/2023 llvm/20.1.8
-module load nvhpc/25.1 openmpi/5.0.3 cuda/12.6
+module purge
+module load StdEnv/2023 llvm/20.1.8 || return
+module load nvhpc/25.1 openmpi/5.0.3 cuda/12.6 || return
 
 export ACPP_VERSION=v25.10.0
 export ACPP_GIT_DIR=$BUILD_DIR/.env/acpp-git
