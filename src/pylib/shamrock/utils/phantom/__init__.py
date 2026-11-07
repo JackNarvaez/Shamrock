@@ -269,7 +269,8 @@ def run_phantom_simulation(simulation_folder, sim_name, sph_kernel="M4", gd=Fals
         ):
             os.remove(os.path.join(simulation_folder, f"{sim_name}_00000.tmp"))
 
-    do_dump(dump_number)
+    if dump_file_name.endswith(".tmp"):
+        do_dump(dump_number)
 
     dump_number += 1
 
