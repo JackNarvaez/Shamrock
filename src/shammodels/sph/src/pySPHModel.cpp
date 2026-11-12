@@ -497,13 +497,14 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             py::arg("central_pos") = Tvec{0, 0, 0})
         .def(
             "add_ext_force_shearing_box",
-            [](TConfig &self, Tscal Omega_0, Tscal eta, Tscal q) {
-                self.add_ext_force_shearing_box(Omega_0, eta, q);
+            [](TConfig &self, Tscal Omega_0, Tscal eta, Tscal q, bool vertical_gravity) {
+                self.add_ext_force_shearing_box(Omega_0, eta, q, vertical_gravity);
             },
             py::kw_only(),
             py::arg("Omega_0"),
             py::arg("eta"),
-            py::arg("q"))
+            py::arg("q"),
+            py::arg("vertical_gravity") = true)
         .def(
             "add_ext_force_velocity_dissipation",
             [](TConfig &self, Tscal eta) {

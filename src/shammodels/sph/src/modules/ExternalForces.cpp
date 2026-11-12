@@ -547,7 +547,8 @@ void shammodels::sph::modules::ExternalForces<Tvec, SPHKernel>::add_ext_forces()
 
             auto add_force_shearing_box_non_inertial = solver_graph.register_node(
                 prefix_shearing_box,
-                shammodels::common::modules::AddForceShearingBoxNonInertial<Tvec>());
+                shammodels::common::modules::AddForceShearingBoxNonInertial<Tvec>(
+                    ext_force->vertical_gravity));
             shambase::get_check_ref(add_force_shearing_box_non_inertial)
                 .set_edges(
                     solver_graph.get_edge_ptr<IDataEdge<Tscal>>(prefix_Omega_0),

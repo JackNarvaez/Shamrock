@@ -8,6 +8,8 @@ $$
     v_x \mathbf{e}_{y} - \Omega_0^2 z \mathbf{e}_{z}
 $$
 
+The vertical gravity $-\Omega_0^2 z$ is applied by default (stratified box). For an unstratified box, pass `vertical_gravity=False` to `add_ext_force_shearing_box`.
+
 Shear speed:
 
 $$

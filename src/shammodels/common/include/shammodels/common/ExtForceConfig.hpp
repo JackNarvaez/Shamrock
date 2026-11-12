@@ -60,6 +60,7 @@ namespace shammodels {
          * \f[
          *  \mathbf{f} = 2\Omega_0 \left(  q \Omega_0 x +  v_y \right) \basevec{x} -2\Omega_0 v_x
          * \basevec{y} - \Omega_0^2 z \basevec{z}  \f] Shear speed : \f[ \omega = q \Omega_0 L_x \f]
+         * The \f$ - \Omega_0^2 z \f$ term is applied only when `vertical_gravity` is true.
          */
         struct ShearingBoxForce {
             i32_3 shear_base = {1, 0, 0};
@@ -68,14 +69,22 @@ namespace shammodels {
             Tscal Omega_0;
             Tscal eta;
             Tscal q;
+            bool vertical_gravity = true;
 
             inline Tscal shear_speed(Tscal box_length) { return q * Omega_0 * box_length; }
 
             ShearingBoxForce() = default;
-            ShearingBoxForce(Tscal Omega_0, Tscal eta, Tscal q)
-                : Omega_0(Omega_0), eta(eta), q(q) {};
-            ShearingBoxForce(i32_3 shear_base, i32_3 shear_dir, Tscal Omega_0, Tscal eta, Tscal q)
-                : shear_base(shear_base), shear_dir(shear_dir), Omega_0(Omega_0), eta(eta), q(q) {};
+            ShearingBoxForce(Tscal Omega_0, Tscal eta, Tscal q, bool vertical_gravity = true)
+                : Omega_0(Omega_0), eta(eta), q(q), vertical_gravity(vertical_gravity) {};
+            ShearingBoxForce(
+                i32_3 shear_base,
+                i32_3 shear_dir,
+                Tscal Omega_0,
+                Tscal eta,
+                Tscal q,
+                bool vertical_gravity = true)
+                : shear_base(shear_base), shear_dir(shear_dir), Omega_0(Omega_0), eta(eta), q(q),
+                  vertical_gravity(vertical_gravity) {};
         };
 
         /// thin disc approx: a_z = -GMz / (R0^2 sqrt(R0^2 + z^2)) ~ -Omega_K^2 z for z << R0
@@ -142,9 +151,11 @@ namespace shammodels {
          * @brief
          * \todo add check for norm of shear vectors
          */
-        inline void add_shearing_box(Tscal Omega_0, Tscal eta, Tscal q) {
+        inline void add_shearing_box(
+            Tscal Omega_0, Tscal eta, Tscal q, bool vertical_gravity = true) {
 
-            ext_forces.push_back(ExtForceVariant<Tvec>{ShearingBoxForce{Omega_0, eta, q}});
+            ext_forces.push_back(
+                ExtForceVariant<Tvec>{ShearingBoxForce{Omega_0, eta, q, vertical_gravity}});
         }
 
         inline void add_vertical_disc_potential(Tscal central_mass, Tscal R0) {
@@ -201,6 +212,7 @@ namespace shammodels {
                 {"Omega_0", v->Omega_0},
                 {"eta", v->eta},
                 {"q", v->q},
+                {"vertical_gravity", v->vertical_gravity},
             };
         } else if (const VerticalDiscPotential *v = std::get_if<VerticalDiscPotential>(&p.val)) {
             j
@@ -261,6 +273,7 @@ namespace shammodels {
                 j.at("Omega_0").get<Tscal>(),
                 j.at("eta").get<Tscal>(),
                 j.at("q").get<Tscal>(),
+                j.value("vertical_gravity", true),
             };
         } else if (force_type == "vertical_disc_potential") {
             p.val = VerticalDiscPotential{

@@ -41,8 +41,11 @@ namespace shammodels::common::modules {
 
         using Tscal = shambase::VecComponent<Tvec>;
 
+        bool vertical_gravity;
+
         public:
-        AddForceShearingBoxNonInertial() = default;
+        AddForceShearingBoxNonInertial(bool vertical_gravity = true)
+            : vertical_gravity(vertical_gravity) {}
 
         EXPAND_NODE_EDGES(NODE_EDGES)
 
@@ -58,7 +61,7 @@ namespace shammodels::common::modules {
             Tscal Omega_0 = edges.omega_0.data;
             Tscal q       = edges.q.data;
 
-            Tscal Omega_0_sq = Omega_0 * Omega_0;
+            Tscal Omega_z_sq = (vertical_gravity) ? Omega_0 * Omega_0 : Tscal{0};
 
             sham::distributed_data_kernel_call(
                 shamsys::instance::get_compute_scheduler_ptr(),
@@ -66,14 +69,14 @@ namespace shammodels::common::modules {
                     edges.spans_positions.get_spans(), edges.spans_velocities.get_spans()},
                 sham::DDMultiRef{edges.spans_accel_ext.get_spans()},
                 edges.sizes.indexes,
-                [Omega_0, Omega_0_sq, q](
+                [Omega_0, Omega_z_sq, q](
                     u32 gid, const Tvec *xyz, const Tvec *vxyz, Tvec *axyz_ext) {
                     Tvec r_a = xyz[gid];
                     Tvec v_a = vxyz[gid];
                     axyz_ext[gid] += Tvec{
                         2 * Omega_0 * (q * Omega_0 * r_a.x() + v_a.y()),
                         -2 * Omega_0 * v_a.x(),
-                        -Omega_0_sq * r_a.z()};
+                        -Omega_z_sq * r_a.z()};
                 });
         }
 

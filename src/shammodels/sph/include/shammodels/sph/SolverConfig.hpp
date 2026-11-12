@@ -1131,9 +1131,11 @@ struct shammodels::sph::SolverConfig {
      * @param[in] Omega_0 The angular frequency of the shear
      * @param[in] eta The shear rate
      * @param[in] q The power-law index of the shear
+     * @param[in] vertical_gravity Apply the vertical gravity -Omega_0^2 z (stratified box)
      */
-    inline void add_ext_force_shearing_box(Tscal Omega_0, Tscal eta, Tscal q) {
-        ext_force_config.add_shearing_box(Omega_0, eta, q);
+    inline void add_ext_force_shearing_box(
+        Tscal Omega_0, Tscal eta, Tscal q, bool vertical_gravity = true) {
+        ext_force_config.add_shearing_box(Omega_0, eta, q, vertical_gravity);
     }
 
     //////////////////////////////////////////////////////////////////////////////////////////////
