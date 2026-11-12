@@ -417,8 +417,8 @@ namespace shamrock::sph::mhd {
         Tvec magnetic_pressure_term = (1. / (2 * mu_0))
                                       * sph::sph_pressure_symetric(
                                           pmass,
-                                          rho_fact_a,
-                                          rho_fact_b,
+                                          rho_a_sq,
+                                          rho_b_sq,
                                           sycl::dot(B_a, B_a),
                                           sycl::dot(B_b, B_b),
                                           omega_a,
