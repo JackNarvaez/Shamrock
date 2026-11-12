@@ -19,6 +19,7 @@
 #include "shambase/logs/loglevels.hpp"
 #include "shambase/memory.hpp"
 #include "shambase/numeric_limits.hpp"
+#include "shambase/overloaded.hpp"
 #include "shambase/string.hpp"
 #include "shambase/tabulate.hpp"
 #include "shambase/time.hpp"
@@ -79,6 +80,7 @@
 #include "shammodels/sph/modules/ParticleReordering.hpp"
 #include "shammodels/sph/modules/SetDustStoppingTimeConstant.hpp"
 #include "shammodels/sph/modules/SetDustStoppingTimeEpstein.hpp"
+#include "shammodels/sph/modules/SetWhenMask.hpp"
 #include "shammodels/sph/modules/SinkParticlesAccreteQuantities.hpp"
 #include "shammodels/sph/modules/SinkParticlesEvictAccretedParticles.hpp"
 #include "shammodels/sph/modules/SinkParticlesFlagAccreteHard.hpp"
@@ -283,6 +285,37 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
     bool has_s_j_field                         = solver_config.dust_config.has_s_j_field();
 
     using namespace shamrock::solvergraph;
+
+    ////////////////////////////////////////////////////////////////////////////////////////
+    // synchronized edges
+    ////////////////////////////////////////////////////////////////////////////////////////
+
+    // register a synchronized edge only if missing, as it may have been restored from a dump
+    auto ensure_sync_edge
+        = [&](const std::string &name, const std::string &tex_symbol, auto init_value) {
+              using T = decltype(init_value);
+              if (!sync_data.has_edge(name)) {
+                  auto edge
+                      = sync_data.register_edge(name, IDataEdgeSerializable<T>(name, tex_symbol));
+                  edge->data = std::move(init_value);
+              }
+          };
+
+    ensure_sync_edge("time", "t", Tscal{0});
+    ensure_sync_edge("dt", "dt", Tscal{0});
+    ensure_sync_edge("cfl_multiplier", "C_{\\rm CFL}", Tscal{1e-2});
+
+    ensure_sync_edge("sink_pos", "\\bf{r}_{\\mathrm{sink}}", std::vector<Tvec>{});
+    ensure_sync_edge("sink_vel", "\\bf{v}_{\\mathrm{sink}}", std::vector<Tvec>{});
+    ensure_sync_edge("sink_acc_sph", "\\bf{a}_{\\mathrm{sink, sph}}", std::vector<Tvec>{});
+    ensure_sync_edge("sink_acc_ext", "\\bf{a}_{\\mathrm{sink, ext}}", std::vector<Tvec>{});
+    ensure_sync_edge("sink_mass", "m_{\\mathrm{sink}}", std::vector<Tscal>{});
+    ensure_sync_edge("sink_angular_momentum", "\\bf{L}_{\\mathrm{sink}}", std::vector<Tvec>{});
+    ensure_sync_edge("sink_accretion_radius", "r_{\\mathrm{accretion}}", std::vector<Tscal>{});
+
+    ////////////////////////////////////////////////////////////////////////////////////////
+    // main solver graph
+    ////////////////////////////////////////////////////////////////////////////////////////
 
     SolverGraph &solver_graph = storage.solver_graph;
 
@@ -1531,7 +1564,7 @@ void shammodels::sph::Solver<Tvec, Kern>::apply_position_boundary(Tscal time_val
 }
 
 template<class Tvec, template<class> class Kern>
-void shammodels::sph::Solver<Tvec, Kern>::build_ghost_cache() {
+void shammodels::sph::Solver<Tvec, Kern>::build_ghost_cache(Tscal time_val) {
 
     StackEntry stack_loc{};
 
@@ -1541,8 +1574,25 @@ void shammodels::sph::Solver<Tvec, Kern>::build_ghost_cache() {
     using InterfaceBuildInfos = typename GhostHandle::InterfaceBuildInfos;
     using InterfaceIdTable    = typename GhostHandle::InterfaceIdTable;
 
+    using BCConfig           = typename Config::BCConfig;
+    using BCFree             = typename BCConfig::Free;
+    using BCPeriodic         = typename BCConfig::Periodic;
+    using BCShearingPeriodic = typename BCConfig::ShearingPeriodic;
+
+    const auto &bc_config = solver_config.boundary_config.config;
+
+    // ----------------------------------------------------------------------------------------
+    // Generate the ghost handler
+    // ----------------------------------------------------------------------------------------
+
+    storage.ghost_handler.set(
+        GhostHandle{scheduler(), storage.patch_rank_owner, storage.xyzh_ghost_layout});
+
+    // ----------------------------------------------------------------------------------------
+    // Build the ghost cache
+    // ----------------------------------------------------------------------------------------
+
     PatchScheduler &sched         = scheduler();
-    GhostHandle &ghost_handle     = storage.ghost_handler.get();
     SerialPatchTree<Tvec> &sptree = storage.serial_patch_tree.get();
     const Tscal h_evol_max        = solver_config.htol_up_coarse_cycle;
 
@@ -1568,107 +1618,150 @@ void shammodels::sph::Solver<Tvec, Kern>::build_ghost_cache() {
         });
 
     // ----------------------------------------------------------------------------------------
-    // temporary wrapper to slowly migrate to the new solvergraph
+    // Edges
+    // ----------------------------------------------------------------------------------------
+
+    auto sim_box_edge         = std::make_shared<ScalarEdge<shammath::AABB<Tvec>>>("", "");
+    auto patch_tree_edge      = std::make_shared<SerialPatchTreeRefEdge<Tvec>>("", "");
+    auto interact_radius_tree = std::make_shared<PatchtreeFieldEdge<Tscal>>("", "");
+    auto interact_radius      = std::make_shared<ScalarsEdge<Tscal>>("", "");
+    auto local_patch_boxes    = std::make_shared<ScalarsEdge<shammath::CoordRange<Tvec>>>("", "");
+    auto shear_value          = IDataEdge<Tscal>::make_shared("", "");
+    auto positions            = std::make_shared<FieldRefs<Tvec>>("", "");
+    auto interface_infos      = std::make_shared<DDSharedScalar<InterfaceBuildInfos>>("", "");
+    auto interface_id_table   = std::make_shared<DDSharedScalar<InterfaceIdTable>>("", "");
+
+    // ----------------------------------------------------------------------------------------
+    // Nodes
+    // ----------------------------------------------------------------------------------------
+
+    std::vector<std::shared_ptr<INode>> build_ghost_cache_sequence;
+
+    std::visit(
+        shambase::overloaded{
+            [&](const BCFree &) {
+                auto node = std::make_shared<modules::FindGhostInterfacesFree<Tvec>>();
+                node->set_edges(
+                    sim_box_edge,
+                    patch_tree_edge,
+                    interact_radius_tree,
+                    interact_radius,
+                    local_patch_boxes,
+                    interface_infos);
+                build_ghost_cache_sequence.push_back(node);
+            },
+            [&](const BCPeriodic &) {
+                auto node = std::make_shared<modules::FindGhostInterfacesPeriodic<Tvec>>();
+                node->set_edges(
+                    sim_box_edge,
+                    patch_tree_edge,
+                    interact_radius_tree,
+                    interact_radius,
+                    local_patch_boxes,
+                    interface_infos);
+                build_ghost_cache_sequence.push_back(node);
+            },
+            [&](const BCShearingPeriodic &cfg) {
+                auto node = std::make_shared<modules::FindGhostInterfacesShearingPeriodic<Tvec>>(
+                    cfg.shear_base, cfg.shear_dir, cfg.shear_speed);
+                node->set_edges(
+                    sim_box_edge,
+                    patch_tree_edge,
+                    interact_radius_tree,
+                    interact_radius,
+                    local_patch_boxes,
+                    shear_value,
+                    interface_infos);
+                build_ghost_cache_sequence.push_back(node);
+            },
+        },
+        bc_config);
+
+    using GeneratorMap = shambase::DistributedDataShared<InterfaceBuildInfos>;
+
+    if (solver_config.has_filter_empty_patch_gz()) {
+        auto filter_empty_patch_gz
+            = std::make_shared<NodeSetEdge<DDSharedScalar<InterfaceBuildInfos>>>(
+                [&](DDSharedScalar<InterfaceBuildInfos> &interface_infos_edge) {
+                    GeneratorMap &interf_map = interface_infos_edge.values;
+
+                    PatchField<u32> patchdata_obj_cnt = sched.map_owned_to_patch_field_simple<u32>(
+                        [&](const Patch p, PatchDataLayer &pdat) -> u32 {
+                            return pdat.get_obj_cnt();
+                        });
+
+                    GeneratorMap filtered_interf_map = {};
+
+                    interf_map.for_each([&](u64 sender, u64 receiver, InterfaceBuildInfos &build) {
+                        u32 sender_obj_cnt   = patchdata_obj_cnt.get(sender);
+                        u32 receiver_obj_cnt = patchdata_obj_cnt.get(receiver);
+
+                        if (sender_obj_cnt == 0 || receiver_obj_cnt == 0) {
+                            shamlog_debug_ln(
+                                "Ghost", "patch", sender, "->", receiver, "is empty, skipping");
+                            return;
+                        }
+
+                        filtered_interf_map.add_obj(sender, receiver, InterfaceBuildInfos{build});
+                    });
+                    interf_map = std::move(filtered_interf_map);
+                });
+        filter_empty_patch_gz->set_edges(interface_infos);
+        build_ghost_cache_sequence.push_back(filter_empty_patch_gz);
+    }
+
+    auto build_id_table = std::make_shared<modules::BuildGhostInterfaceIdTable<Tvec>>();
+    build_id_table->set_edges(positions, interface_infos, interface_id_table);
+    build_ghost_cache_sequence.push_back(build_id_table);
+
+    OperationSequence build_ghost_cache_seq(
+        "build ghost cache", std::move(build_ghost_cache_sequence));
+
+    // ----------------------------------------------------------------------------------------
+    // Set edges
+    // ----------------------------------------------------------------------------------------
+
     SimulationBoxInfo &sim_box                   = sched.get_sim_box();
     PatchCoordTransform<Tvec> patch_coord_transf = sim_box.get_patch_transform<Tvec>();
     auto [bmin, bmax]                            = sim_box.get_bounding_box<Tvec>();
 
-    auto sim_box_edge   = std::make_shared<ScalarEdge<shammath::AABB<Tvec>>>("", "");
     sim_box_edge->value = shammath::AABB<Tvec>(bmin, bmax);
 
-    auto patch_tree_edge        = std::make_shared<SerialPatchTreeRefEdge<Tvec>>("", "");
     patch_tree_edge->patch_tree = std::ref(sptree);
 
-    auto interact_radius_tree             = std::make_shared<PatchtreeFieldEdge<Tscal>>("", "");
     interact_radius_tree->patchtree_field = std::move(interactR_mpi_tree);
 
     // interactR_patch is not used afterwards, so move it (O(1)) instead of copying over all
     // global patches
-    auto interact_radius    = std::make_shared<ScalarsEdge<Tscal>>("", "");
     interact_radius->values = std::move(interactR_patch.field_all);
 
-    auto local_patch_boxes = std::make_shared<ScalarsEdge<shammath::CoordRange<Tvec>>>("", "");
     sched.for_each_local_patch([&](const Patch &p) {
         local_patch_boxes->values.add_obj(p.id_patch, patch_coord_transf.to_obj_coord(p));
     });
 
-    auto interface_infos = std::make_shared<DDSharedScalar<InterfaceBuildInfos>>("", "");
-
-    using CfgClass           = sph::BasicSPHGhostHandlerConfig<Tvec>;
-    using BCPeriodic         = typename CfgClass::Periodic;
-    using BCShearingPeriodic = typename CfgClass::ShearingPeriodic;
-
-    const auto &ghost_config = ghost_handle.get_ghost_config();
-
-    if (const BCPeriodic *cfg = std::get_if<BCPeriodic>(&ghost_config)) {
-        modules::FindGhostInterfacesPeriodic<Tvec> node;
-        node.set_edges(
-            sim_box_edge,
-            patch_tree_edge,
-            interact_radius_tree,
-            interact_radius,
-            local_patch_boxes,
-            interface_infos);
-        node.evaluate();
-    } else if (const BCShearingPeriodic *cfg = std::get_if<BCShearingPeriodic>(&ghost_config)) {
-        auto shear_value  = IDataEdge<Tscal>::make_shared("", "");
-        shear_value->data = cfg->shear_value;
-
-        modules::FindGhostInterfacesShearingPeriodic<Tvec> node(
-            cfg->shear_base, cfg->shear_dir, cfg->shear_speed);
-        node.set_edges(
-            sim_box_edge,
-            patch_tree_edge,
-            interact_radius_tree,
-            interact_radius,
-            local_patch_boxes,
-            shear_value,
-            interface_infos);
-        node.evaluate();
-    } else {
-        modules::FindGhostInterfacesFree<Tvec> node;
-        node.set_edges(
-            sim_box_edge,
-            patch_tree_edge,
-            interact_radius_tree,
-            interact_radius,
-            local_patch_boxes,
-            interface_infos);
-        node.evaluate();
+    if (const BCShearingPeriodic *cfg = std::get_if<BCShearingPeriodic>(&bc_config)) {
+        shear_value->data = cfg->shear_speed * time_val;
     }
+
+    DDPatchDataFieldRef<Tvec> positions_refs = {};
+    sched.for_each_patchdata_nonempty([&](const Patch p, PatchDataLayer &pdat) {
+        positions_refs.add_obj(p.id_patch, std::ref(pdat.get_field<Tvec>(0)));
+    });
+    positions->set_refs(positions_refs);
 
     // ----------------------------------------------------------------------------------------
+    // Evaluate
+    // ----------------------------------------------------------------------------------------
 
-    using GeneratorMap       = shambase::DistributedDataShared<InterfaceBuildInfos>;
-    GeneratorMap &interf_map = interface_infos->values;
+    build_ghost_cache_seq.evaluate();
 
-    if (solver_config.has_filter_empty_patch_gz()) {
-        PatchField<u32> patchdata_obj_cnt = sched.map_owned_to_patch_field_simple<u32>(
-            [&](const Patch p, PatchDataLayer &pdat) -> u32 {
-                return pdat.get_obj_cnt();
-            });
-
-        GeneratorMap filtered_interf_map = {};
-
-        interf_map.for_each([&](u64 sender, u64 receiver, InterfaceBuildInfos &build) {
-            u32 sender_obj_cnt   = patchdata_obj_cnt.get(sender);
-            u32 receiver_obj_cnt = patchdata_obj_cnt.get(receiver);
-
-            if (sender_obj_cnt == 0 || receiver_obj_cnt == 0) {
-                shamlog_debug_ln("Ghost", "patch", sender, "->", receiver, "is empty, skipping");
-                return;
-            }
-
-            filtered_interf_map.add_obj(sender, receiver, InterfaceBuildInfos{build});
-        });
-        interf_map = std::move(filtered_interf_map);
-    }
+    // ----------------------------------------------------------------------------------------
 
     u32 total          = 0;
     u32 empty_receiver = 0;
     u32 empty_sender   = 0;
     u32 empty_either   = 0;
-    interf_map.for_each([&](u64 sender, u64 receiver, InterfaceBuildInfos &build) {
+    interface_infos->values.for_each([&](u64 sender, u64 receiver, InterfaceBuildInfos &build) {
         bool receiver_empty = sched.get_patch(receiver).load_value == 0;
         bool sender_empty   = sched.get_patch(sender).load_value == 0;
         total++;
@@ -1692,19 +1785,6 @@ void shammodels::sph::Solver<Tvec, Kern>::build_ghost_cache() {
         empty_sender,
         "empty_either:",
         empty_either);
-
-    auto positions                           = std::make_shared<FieldRefs<Tvec>>("", "");
-    DDPatchDataFieldRef<Tvec> positions_refs = {};
-    sched.for_each_patchdata_nonempty([&](const Patch p, PatchDataLayer &pdat) {
-        positions_refs.add_obj(p.id_patch, std::ref(pdat.get_field<Tvec>(0)));
-    });
-    positions->set_refs(positions_refs);
-
-    auto interface_id_table = std::make_shared<DDSharedScalar<InterfaceIdTable>>("", "");
-
-    modules::BuildGhostInterfaceIdTable<Tvec> build_id_table;
-    build_id_table.set_edges(positions, interface_infos, interface_id_table);
-    build_id_table.evaluate();
 
     storage.ghost_patch_cache.set(std::move(interface_id_table->values));
 
@@ -1793,8 +1873,7 @@ void shammodels::sph::Solver<Tvec, Kern>::sph_prestep(Tscal time_val, Tscal dt) 
     u32 hstep_max = solver_config.h_max_subcycles_count;
     for (; hstep_cnt < hstep_max; hstep_cnt++) {
 
-        gen_ghost_handler(time_val + dt);
-        build_ghost_cache();
+        build_ghost_cache(time_val + dt);
         merge_position_ghost();
         build_merged_pos_trees();
         compute_presteps_rint();
