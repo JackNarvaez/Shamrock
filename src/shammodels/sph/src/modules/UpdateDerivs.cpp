@@ -1470,8 +1470,9 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                         psi_cons_term);
 
                     if (has_mhd_diag) {
-                        Tvec r_ab_unit = dr * sham::inv_sat_positive(rab);
-                        sum_curlB += pmass * sycl::cross(B_a - B_b, r_ab_unit * Fab_a);
+                        Tvec r_ab_unit    = dr * sham::inv_sat_positive(rab);
+                        Tscal curl_weight = (_gd) ? pmass / rho_b : pmass;
+                        sum_curlB += curl_weight * sycl::cross(B_a - B_b, r_ab_unit * Fab_a);
                     }
                 });
 
@@ -1480,7 +1481,7 @@ void shammodels::sph::modules::UpdateDerivs<Tvec, SPHKernel>::update_derivs_mhd_
                 }
 
                 if (has_mhd_diag) {
-                    mcurlB[id_a] = sycl::length(sum_curlB) / (rho_a * omega_a);
+                    mcurlB[id_a] = sycl::length(sum_curlB) / ((_gd) ? omega_a : rho_a * omega_a);
                     dudtAR[id_a] = tmpdU_mhd;
                 }
 
