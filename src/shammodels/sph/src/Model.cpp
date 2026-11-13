@@ -1640,12 +1640,10 @@ void shammodels::sph::Model<Tvec, SPHKernel>::add_pdat_to_phantom_block_mhd(
 
 template<class Tvec, template<class> class SPHKernel>
 shammodels::sph::PhantomDump shammodels::sph::Model<Tvec, SPHKernel>::make_phantom_dump(
-    std::optional<Tscal> dtmax, i32 idumpfile) {
+    std::optional<Tscal> dtmax, i32 idumpfile, bool bypass_error_check) {
     StackEntry stack_loc{};
 
     PhantomDump dump;
-
-    bool bypass_error_check = false;
 
     auto get_sink_count = [&]() -> int {
         return int(get_sink_pos<Tvec>(shambase::get_check_ref(ctx.sched).synchronized_data).size());

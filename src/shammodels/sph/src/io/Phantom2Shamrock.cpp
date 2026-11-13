@@ -317,6 +317,13 @@ namespace shammodels::sph {
             } else {
                 logger::warn_ln("PhantomDump", err_msg);
             }
+
+            dump.table_header_fort_real.add("xmin", bmin.x());
+            dump.table_header_fort_real.add("xmax", bmax.x());
+            dump.table_header_fort_real.add("ymin", bmin.y());
+            dump.table_header_fort_real.add("ymax", bmax.y());
+            dump.table_header_fort_real.add("zmin", bmin.z());
+            dump.table_header_fort_real.add("zmax", bmax.z());
         }
     }
 
