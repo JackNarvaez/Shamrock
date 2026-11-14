@@ -127,6 +127,7 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             &TConfig::set_smoothing_length_density_based_bisecting_nr)
         .def("set_enable_particle_reordering", &TConfig::set_enable_particle_reordering)
         .def("set_particle_reordering_step_freq", &TConfig::set_particle_reordering_step_freq)
+        .def("set_mhd_net_flux_correction", &TConfig::set_mhd_net_flux_correction)
         .def("set_show_ghost_zone_graph", &TConfig::set_show_ghost_zone_graph)
         .def("set_show_ghost_stats", &TConfig::set_show_ghost_stats)
         .def("use_luminosity", &TConfig::use_luminosity)

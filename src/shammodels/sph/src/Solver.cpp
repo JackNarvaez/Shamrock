@@ -76,6 +76,7 @@
 #include "shammodels/sph/modules/MonoFluidTVADeltav.hpp"
 #include "shammodels/sph/modules/NeighbourCache.hpp"
 #include "shammodels/sph/modules/NodeComputePressureGrad.hpp"
+#include "shammodels/sph/modules/NodeMHDNetFluxCorrection.hpp"
 #include "shammodels/sph/modules/NodeMonofluidTVADustDensityClamp.hpp"
 #include "shammodels/sph/modules/ParticleReordering.hpp"
 #include "shammodels/sph/modules/SetDustStoppingTimeConstant.hpp"
@@ -2817,6 +2818,43 @@ void shammodels::sph::Solver<Tvec, Kern>::update_derivs(Tscal dt_hydro) {
 
     modules::UpdateDerivs<Tvec, Kern> derivs(context, solver_config, storage);
     derivs.update_derivs(dt_hydro);
+
+    if (solver_config.mhd_net_flux_correction) {
+        using namespace shamrock::solvergraph;
+        SolverGraph &solver_graph = storage.solver_graph;
+
+        auto hfactd_edge  = IDataEdge<Tscal>::make_shared("hfactd", "hfactd");
+        hfactd_edge->data = Kernel::hfactd;
+
+        auto shear_grad = IDataEdge<Tvec>::make_shared("shear_grad", "\\nabla v_{\\rm shear}");
+        auto shear_dir  = IDataEdge<Tvec>::make_shared("shear_dir", "\\mathbf{e}_{\\rm shear}");
+
+        using SolverBCShearingPeriodic = typename Config::BCConfig::ShearingPeriodic;
+        if (SolverBCShearingPeriodic *c
+            = std::get_if<SolverBCShearingPeriodic>(&solver_config.boundary_config.config)) {
+            auto [bmin, bmax] = scheduler().template get_box_volume<Tvec>();
+            Tvec box_size     = bmax - bmin;
+
+            shear_grad->data = c->shear_speed
+                               * Tvec{c->shear_base.x() / box_size.x(),
+                                      c->shear_base.y() / box_size.y(),
+                                      c->shear_base.z() / box_size.z()};
+            shear_dir->data  = Tvec{
+                Tscal(c->shear_dir.x()), Tscal(c->shear_dir.y()), Tscal(c->shear_dir.z())};
+        }
+
+        auto net_flux_correction = std::make_shared<modules::NodeMHDNetFluxCorrection<Tvec>>();
+        net_flux_correction->set_edges(
+            solver_graph.get_edge_ptr<Indexes<u32>>("part_counts"),
+            solver_graph.get_edge_ptr<IDataEdge<Tscal>>("gpart_mass"),
+            hfactd_edge,
+            shear_grad,
+            shear_dir,
+            solver_graph.get_edge_ptr<FieldRefs<Tscal>>("hpart"),
+            solver_graph.get_edge_ptr<FieldRefs<Tvec>>("B/rho"),
+            solver_graph.get_edge_ptr<FieldRefs<Tvec>>("dB/rho"));
+        net_flux_correction->evaluate();
+    }
 
     modules::ExternalForces<Tvec, Kern> ext_forces(context, solver_config, storage);
     ext_forces.add_ext_forces();

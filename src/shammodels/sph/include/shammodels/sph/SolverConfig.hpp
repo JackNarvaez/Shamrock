@@ -804,6 +804,9 @@ struct shammodels::sph::SolverConfig {
         particle_reordering_step_freq = freq;
     }
 
+    bool mhd_net_flux_correction = false;
+    inline void set_mhd_net_flux_correction(bool enable) { mhd_net_flux_correction = enable; }
+
     bool save_dt_to_fields = false;
     inline void set_save_dt_to_fields(bool enable) { save_dt_to_fields = enable; }
     inline bool should_save_dt_to_fields() const { return save_dt_to_fields; }
@@ -1264,6 +1267,18 @@ struct shammodels::sph::SolverConfig {
                 "Non-ideal MHD is experimental, please enable experimental features to use it");
         }
 
+        if (mhd_net_flux_correction) {
+            if (!has_field_b_on_rho()) {
+                shambase::throw_with_loc<std::invalid_argument>(
+                    "the MHD net flux correction requires a MHD config");
+            }
+            if (std::get_if<typename BCConfig::Free>(&boundary_config.config)) {
+                shambase::throw_with_loc<std::invalid_argument>(
+                    "the MHD net flux correction requires periodic or shearing periodic "
+                    "boundaries");
+            }
+        }
+
         using EOSBarotropic = typename EOSConfig::Barotropic;
         if (const EOSBarotropic *eos = std::get_if<EOSBarotropic>(&eos_config.config)) {
             if (!(eos->cs0 > 0) || !(eos->rho0 > 0) || !(eos->gamma0 > 1)) {
@@ -1541,6 +1556,8 @@ namespace shammodels::sph {
             {"enable_particle_reordering", p.enable_particle_reordering},
             {"particle_reordering_step_freq", p.particle_reordering_step_freq},
 
+            {"mhd_net_flux_correction", p.mhd_net_flux_correction},
+
             {"save_dt_to_fields", p.save_dt_to_fields},
             {"show_ghost_zone_graph", p.show_ghost_zone_graph},
             {"show_ghost_stats", p.show_ghost_stats},
@@ -1634,6 +1651,7 @@ namespace shammodels::sph {
         _get_to_if_contains("h_max_subcycles_count", p.h_max_subcycles_count);
         _get_to_if_contains("enable_particle_reordering", p.enable_particle_reordering);
         _get_to_if_contains("particle_reordering_step_freq", p.particle_reordering_step_freq);
+        _get_to_if_contains("mhd_net_flux_correction", p.mhd_net_flux_correction);
         _get_to_if_contains("save_dt_to_fields", p.save_dt_to_fields);
         _get_to_if_contains("show_ghost_zone_graph", p.show_ghost_zone_graph);
         _get_to_if_contains("show_ghost_stats", p.show_ghost_stats);
