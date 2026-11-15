@@ -101,13 +101,19 @@ namespace shammodels::sph {
             Tscal radius;
         };
 
-        using kill_t = std::variant<Sphere>;
+        struct SmoothingLength {
+            Tscal h_max;
+        };
+
+        using kill_t = std::variant<Sphere, SmoothingLength>;
 
         std::vector<kill_t> kill_list;
 
         inline void add_kill_sphere(const Tvec &center, Tscal radius) {
             kill_list.push_back(Sphere{center, radius});
         }
+
+        inline void add_kill_h_max(Tscal h_max) { kill_list.push_back(SmoothingLength{h_max}); }
     };
 
     template<class Tscal>
@@ -1344,6 +1350,12 @@ namespace shammodels::sph {
                 j.push_back(
                     {{"type", "sphere"}, {"center", sphere.center}, {"radius", sphere.radius}});
             }
+            if (std::holds_alternative<typename ParticleKillingConfig<Tvec>::SmoothingLength>(
+                    kill)) {
+                const auto &h_rule
+                    = std::get<typename ParticleKillingConfig<Tvec>::SmoothingLength>(kill);
+                j.push_back({{"type", "h_max"}, {"h_max", h_rule.h_max}});
+            }
             // If more types are added to kill_t, handle them here
         }
     }
@@ -1358,6 +1370,10 @@ namespace shammodels::sph {
                 item.at("center").get_to(sphere.center);
                 item.at("radius").get_to(sphere.radius);
                 p.kill_list.push_back(sphere);
+            } else if (type == "h_max") {
+                typename ParticleKillingConfig<Tvec>::SmoothingLength h_rule;
+                item.at("h_max").get_to(h_rule.h_max);
+                p.kill_list.push_back(h_rule);
             }
             // If more types are added to kill_t, handle them here
         }

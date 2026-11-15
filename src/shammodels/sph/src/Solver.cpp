@@ -67,6 +67,7 @@
 #include "shammodels/sph/modules/DiffOperatorDtDivv.hpp"
 #include "shammodels/sph/modules/ExternalForces.hpp"
 #include "shammodels/sph/modules/FindGhostInterfaces.hpp"
+#include "shammodels/sph/modules/GetParticlesHAbove.hpp"
 #include "shammodels/sph/modules/GetParticlesOutsideSphere.hpp"
 #include "shammodels/sph/modules/IterateSmoothingLengthDensity.hpp"
 #include "shammodels/sph/modules/IterateSmoothingLengthDensityBisectingNR.hpp"
@@ -747,6 +748,7 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
 
         auto patchdatas = solver_graph.get_edge_ptr<PatchDataLayerRefs>("scheduler_patchdata");
         auto xyz_edge   = solver_graph.get_edge_ptr<FieldRefs<Tvec>>("xyz");
+        auto hpart_edge = solver_graph.get_edge_ptr<FieldRefs<Tscal>>("hpart");
 
         auto part_to_remove = solver_graph.register_edge(
             "part_to_remove", DistributedBuffers<u32>("part_to_remove", "part_to_remove"));
@@ -763,6 +765,7 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
 
         using kill_t      = typename ParticleKillingConfig<Tvec>::kill_t;
         using kill_sphere = typename ParticleKillingConfig<Tvec>::Sphere;
+        using kill_h_max  = typename ParticleKillingConfig<Tvec>::SmoothingLength;
 
         // selectors
         for (kill_t &kill_obj : solver_config.particle_killing.kill_list) {
@@ -771,6 +774,13 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
                 modules::GetParticlesOutsideSphere<Tvec> node_selector(
                     kill_info->center, kill_info->radius);
                 node_selector.set_edges(xyz_edge, part_to_remove);
+
+                part_kill_sequence.push_back(
+                    std::make_shared<decltype(node_selector)>(std::move(node_selector)));
+            } else if (kill_h_max *kill_info = std::get_if<kill_h_max>(&kill_obj)) {
+
+                modules::GetParticlesHAbove<Tvec> node_selector(kill_info->h_max);
+                node_selector.set_edges(hpart_edge, part_to_remove);
 
                 part_kill_sequence.push_back(
                     std::make_shared<decltype(node_selector)>(std::move(node_selector)));

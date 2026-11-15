@@ -561,7 +561,14 @@ void add_instance(py::module &m, std::string name_config, std::string name_model
             },
             py::kw_only(),
             py::arg("center"),
-            py::arg("radius"));
+            py::arg("radius"))
+        .def(
+            "add_kill_h_max",
+            [](TConfig &self, Tscal h_max) {
+                self.particle_killing.add_kill_h_max(h_max);
+            },
+            py::kw_only(),
+            py::arg("h_max"));
 
     std::string sod_tube_analysis_name = name_model + "_AnalysisSodTube";
     py::class_<TAnalysisSodTube>(m, sod_tube_analysis_name.c_str())
