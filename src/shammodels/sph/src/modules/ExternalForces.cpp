@@ -244,8 +244,8 @@ void shammodels::sph::modules::ExternalForces<Tvec, SPHKernel>::compute_ext_forc
 
             auto eta = shamrock::solvergraph::IDataEdge<Tscal>::make_shared("", "");
             shamrock::solvergraph::NodeSetEdge<shamrock::solvergraph::IDataEdge<Tscal>> set_eta(
-                [&](shamrock::solvergraph::IDataEdge<Tscal> &eta) {
-                    eta.data = ext_force->eta;
+                [eta_val = ext_force->eta](shamrock::solvergraph::IDataEdge<Tscal> &eta) {
+                    eta.data = eta_val;
                 });
             set_eta.set_edges(eta);
 
@@ -537,12 +537,13 @@ void shammodels::sph::modules::ExternalForces<Tvec, SPHKernel>::add_ext_forces()
             std::string prefix_q            = prefix + "q_";
             std::string prefix_shearing_box = prefix + "shearing_box_";
 
-            auto set_Omega_0 = register_constant_set<Tscal>(solver_graph, prefix_Omega_0, [&]() {
-                return ext_force->Omega_0;
-            });
+            auto set_Omega_0 = register_constant_set<Tscal>(
+                solver_graph, prefix_Omega_0, [Omega_0 = ext_force->Omega_0]() {
+                    return Omega_0;
+                });
 
-            auto set_q = register_constant_set<Tscal>(solver_graph, prefix_q, [&]() {
-                return ext_force->q;
+            auto set_q = register_constant_set<Tscal>(solver_graph, prefix_q, [q = ext_force->q]() {
+                return q;
             });
 
             auto add_force_shearing_box_non_inertial = solver_graph.register_node(
