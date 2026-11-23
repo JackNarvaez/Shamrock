@@ -804,6 +804,15 @@ struct shammodels::sph::SolverConfig {
         particle_reordering_step_freq = freq;
     }
 
+    u64 divb_projection_step_interval = 0;
+    inline void set_divb_projection_step_interval(u64 interval) {
+        divb_projection_step_interval = interval;
+    }
+    Tscal divb_projection_tol = 1e-8;
+    inline void set_divb_projection_tol(Tscal tol) { divb_projection_tol = tol; }
+    u32 divb_projection_max_iter = 1000;
+    inline void set_divb_projection_max_iter(u32 max_iter) { divb_projection_max_iter = max_iter; }
+
     bool save_dt_to_fields = false;
     inline void set_save_dt_to_fields(bool enable) { save_dt_to_fields = enable; }
     inline bool should_save_dt_to_fields() const { return save_dt_to_fields; }
@@ -1209,6 +1218,11 @@ struct shammodels::sph::SolverConfig {
     /// @brief Whether the solver has a field for divB
     inline bool has_field_div_b() { return mhd_config.has_div_b_field(); }
 
+    /// @brief Whether the solver has a field for the divB error after the last projection
+    inline bool has_field_divb_chi_prev() {
+        return has_field_b_on_rho() && divb_projection_step_interval > 0;
+    }
+
     /// @brief Whether the solver has a field for curlB
     inline bool has_field_curl_b() { return mhd_config.has_curl_b_field() && (dim == 3); }
 
@@ -1535,6 +1549,9 @@ namespace shammodels::sph {
 
             {"enable_particle_reordering", p.enable_particle_reordering},
             {"particle_reordering_step_freq", p.particle_reordering_step_freq},
+            {"divb_projection_step_interval", p.divb_projection_step_interval},
+            {"divb_projection_tol", p.divb_projection_tol},
+            {"divb_projection_max_iter", p.divb_projection_max_iter},
 
             {"save_dt_to_fields", p.save_dt_to_fields},
             {"show_ghost_zone_graph", p.show_ghost_zone_graph},
@@ -1629,6 +1646,9 @@ namespace shammodels::sph {
         _get_to_if_contains("h_max_subcycles_count", p.h_max_subcycles_count);
         _get_to_if_contains("enable_particle_reordering", p.enable_particle_reordering);
         _get_to_if_contains("particle_reordering_step_freq", p.particle_reordering_step_freq);
+        _get_to_if_contains("divb_projection_step_interval", p.divb_projection_step_interval);
+        _get_to_if_contains("divb_projection_tol", p.divb_projection_tol);
+        _get_to_if_contains("divb_projection_max_iter", p.divb_projection_max_iter);
         _get_to_if_contains("save_dt_to_fields", p.save_dt_to_fields);
         _get_to_if_contains("show_ghost_zone_graph", p.show_ghost_zone_graph);
         _get_to_if_contains("show_ghost_stats", p.show_ghost_stats);

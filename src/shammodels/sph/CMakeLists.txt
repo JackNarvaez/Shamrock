@@ -39,6 +39,9 @@ set(Sources
     src/modules/ComputeOmega.cpp
     src/modules/SetWhenMask.cpp
     src/modules/ComputeJ.cpp
+    src/modules/NodeDivBDifference.cpp
+    src/modules/NodeDivBAdjointGrad.cpp
+    src/modules/NodeDivBProjectionPrecond.cpp
     src/modules/ComputeLuminosity.cpp
     src/modules/NeighbourCache.cpp
     src/modules/ParticleReordering.cpp

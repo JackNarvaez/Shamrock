@@ -76,6 +76,10 @@ namespace shammodels::sph {
             pdl.add_field<Tscal>("divB", 1);
         }
 
+        if (has_field_divb_chi_prev()) {
+            pdl.add_field<Tscal>("divB_chi_prev", 1);
+        }
+
         if (has_field_curl_b()) {
             pdl.add_field<Tvec>("curlB", 1);
         }

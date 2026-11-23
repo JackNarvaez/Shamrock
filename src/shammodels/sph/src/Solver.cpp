@@ -26,6 +26,7 @@
 #include "shamalgs/collective/exchanges.hpp"
 #include "shamalgs/collective/gather_str.hpp"
 #include "shamalgs/collective/reduction.hpp"
+#include "shamalgs/primitives/reduction.hpp"
 #include "shamalgs/reduction.hpp"
 #include "shambackends/MemPerfInfos.hpp"
 #include "shambackends/details/memoryHandle.hpp"
@@ -76,6 +77,9 @@
 #include "shammodels/sph/modules/MonoFluidTVADeltav.hpp"
 #include "shammodels/sph/modules/NeighbourCache.hpp"
 #include "shammodels/sph/modules/NodeComputePressureGrad.hpp"
+#include "shammodels/sph/modules/NodeDivBAdjointGrad.hpp"
+#include "shammodels/sph/modules/NodeDivBDifference.hpp"
+#include "shammodels/sph/modules/NodeDivBProjectionPrecond.hpp"
 #include "shammodels/sph/modules/NodeMonofluidTVADustDensityClamp.hpp"
 #include "shammodels/sph/modules/ParticleReordering.hpp"
 #include "shammodels/sph/modules/SetDustStoppingTimeConstant.hpp"
@@ -113,6 +117,11 @@
 #include "shamrock/solvergraph/GetObjCntFromLayer.hpp"
 #include "shamrock/solvergraph/IFieldRefs.hpp"
 #include "shamrock/solvergraph/Indexes.hpp"
+#include "shamrock/solvergraph/NodeAXPY.hpp"
+#include "shamrock/solvergraph/NodeAYPX.hpp"
+#include "shamrock/solvergraph/NodeHadamardProd.hpp"
+#include "shamrock/solvergraph/NodeOverwrite.hpp"
+#include "shamrock/solvergraph/NodeSumReduction.hpp"
 #include "shamrock/solvergraph/PatchDataLayerRefs.hpp"
 #include "shamrock/solvergraph/PatchtreeFieldEdge.hpp"
 #include "shamrock/solvergraph/RankGetter.hpp"
@@ -134,6 +143,9 @@
 #include "shamsys/system_metrics.hpp"
 #include "shamtree/KarrasRadixTreeField.hpp"
 #include "shamtree/TreeTraversalCache.hpp"
+#include <array>
+#include <bit>
+#include <cmath>
 #include <memory>
 #include <stdexcept>
 #include <vector>
@@ -862,6 +874,8 @@ void shammodels::sph::Solver<Tvec, Kern>::init_solver_graph() {
         = std::make_shared<shamrock::solvergraph::ExchangeGhostLayer>(storage.xyzh_ghost_layout);
 
     storage.exchange_gz_J = std::make_shared<shamrock::solvergraph::ExchangeGhostField<Tvec>>();
+    storage.exchange_gz_B = std::make_shared<shamrock::solvergraph::ExchangeGhostField<Tvec>>();
+    storage.exchange_gz_pi = std::make_shared<shamrock::solvergraph::ExchangeGhostField<Tscal>>();
 
     ////////////////////////////////////////////////////////////////////////////////////////
     // sink accretion
@@ -2556,6 +2570,587 @@ void shammodels::sph::Solver<Tvec, Kern>::update_j() {
     computeJ.evaluate();
 }
 
+template<class Tvec, template<class> class Kern>
+void shammodels::sph::Solver<Tvec, Kern>::project_div_b() {
+
+    StackEntry stack_loc{};
+
+    using namespace shamrock::patch;
+    using namespace shamrock::solvergraph;
+
+    PatchDataLayerLayout &pdl = scheduler().pdl_old();
+
+    const u32 ihpart      = pdl.get_field_idx<Tscal>("hpart");
+    const u32 iB_on_rho   = pdl.get_field_idx<Tvec>("B/rho");
+    const u32 ipsi_on_ch  = pdl.get_field_idx<Tscal>("psi/ch");
+    const u32 idpsi_on_ch = pdl.get_field_idx<Tscal>("dpsi/ch");
+    const u32 ichi_prev   = pdl.get_field_idx<Tscal>("divB_chi_prev");
+
+    shamrock::patch::PatchDataLayerLayout &ghost_layout
+        = shambase::get_check_ref(storage.ghost_layout.get());
+    u32 ihpart_interf = ghost_layout.get_field_idx<Tscal>("hpart");
+    u32 iomega_interf = ghost_layout.get_field_idx<Tscal>("omega");
+
+    Tscal pmass = solver_config.gpart_mass;
+
+    // practical stop on chi = h |div B| / |B| (Tsukamoto 2026)
+    constexpr Tscal chi_abs     = 1e-5;
+    constexpr Tscal chi_ftop    = 0.01;
+    constexpr Tscal bfloor_frac = 1e-6;
+    constexpr i32 chi_top_nbits = 20;
+
+    Tscal chi_fred = 0.1 / Tscal(solver_config.divb_projection_step_interval);
+    u64 npart_all  = scheduler().get_total_obj_count();
+    u64 ntop       = std::max<u64>(1, u64(std::ceil(chi_ftop * Tscal(npart_all))));
+
+    sph::BasicSPHGhostHandler<Tvec> &ghost_handle = storage.ghost_handler.get();
+
+    using InterfaceBuildInfos = typename sph::BasicSPHGhostHandler<Tvec>::InterfaceBuildInfos;
+
+    auto exchange_ghosts
+        = [&]<class T>(
+              std::shared_ptr<ExchangeGhostField<T>> &exchange_node,
+              auto get_field) -> shambase::DistributedData<PatchDataField<T>> {
+        shambase::Timer time_interf;
+        time_interf.start();
+
+        auto field_interf = ghost_handle.template build_interface_native<PatchDataField<T>>(
+            storage.ghost_patch_cache.get(),
+            [&](u64 sender,
+                u64 /*receiver*/,
+                InterfaceBuildInfos binfo,
+                sham::DeviceBuffer<u32> &buf_idx,
+                u32 cnt) -> PatchDataField<T> {
+                return get_field(sender).make_new_from_subset(buf_idx, cnt);
+            });
+
+        shambase::DistributedDataShared<PatchDataField<T>> interf_pdat
+            = ghost_handle.communicate_pdatfield(std::move(field_interf), 1, exchange_node);
+
+        shambase::DistributedData<PatchDataField<T>> merged_field
+            = ghost_handle.template merge_native<PatchDataField<T>, PatchDataField<T>>(
+                std::move(interf_pdat),
+                [&](const shamrock::patch::Patch p, shamrock::patch::PatchDataLayer &pdat) {
+                    return get_field(p.id_patch).duplicate();
+                },
+                [](PatchDataField<T> &mpdat, PatchDataField<T> &pdat_interf) {
+                    mpdat.insert(pdat_interf);
+                });
+
+        time_interf.stop();
+        storage.timings_details.interface += time_interf.elapsed_sec();
+
+        return merged_field;
+    };
+
+    auto set_ghost_refs = [&]<class T>(
+                              FieldRefs<T> &edge,
+                              shambase::DistributedData<PatchDataField<T>> &fields) {
+        edge.set_refs(
+            fields.template map<std::reference_wrapper<PatchDataField<T>>>(
+                [](u64 id, PatchDataField<T> &field) {
+                    return std::ref(field);
+                }));
+    };
+
+    auto get_B_on_rho = [&](u64 id_patch) -> PatchDataField<Tvec> & {
+        return scheduler().patch_data.get_pdat(id_patch).template get_field<Tvec>(iB_on_rho);
+    };
+
+    auto hpart_edge = std::make_shared<FieldRefs<Tscal>>("", "");
+    hpart_edge->set_refs(
+        storage.merged_patchdata_ghost.get()
+            .template map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(ihpart_interf));
+                }));
+
+    auto omega_edge = std::make_shared<FieldRefs<Tscal>>("", "");
+    omega_edge->set_refs(
+        storage.merged_patchdata_ghost.get()
+            .template map<std::reference_wrapper<PatchDataField<Tscal>>>(
+                [&](u64 id, shamrock::patch::PatchDataLayer &mpdat) {
+                    return std::ref(mpdat.get_field<Tscal>(iomega_interf));
+                }));
+
+    auto B_on_rho_edge = std::make_shared<FieldRefs<Tvec>>("", "");
+    auto pi_edge       = std::make_shared<FieldRefs<Tscal>>("", "");
+    auto grad_edge     = std::make_shared<FieldRefs<Tvec>>("", "");
+
+    const shambase::DistributedData<u32> &part_counts
+        = shambase::get_check_ref(storage.part_counts).indexes;
+
+    auto residual    = std::make_shared<Field<Tscal>>(1, "residual", "s");
+    auto inv_diag    = std::make_shared<Field<Tscal>>(1, "inv_diag", "a^{-1}");
+    auto precond_res = std::make_shared<Field<Tscal>>(1, "precond_res", "z");
+    auto search_dir  = std::make_shared<Field<Tscal>>(1, "search_dir", "p");
+    auto op_dir      = std::make_shared<Field<Tscal>>(1, "op_dir", "w");
+    auto pi          = std::make_shared<Field<Tscal>>(1, "pi", "\\pi");
+    auto h_on_B      = std::make_shared<Field<Tscal>>(1, "h_on_B", "h / |B|");
+    auto scratch     = std::make_shared<Field<Tscal>>(1, "scratch", "scratch");
+    auto sum_terms   = std::make_shared<Field<Tvec>>(1, "sum_terms", "sum_terms");
+    auto grad_on_rho = std::make_shared<Field<Tvec>>(1, "grad_on_rho", "G \\pi / \\rho");
+
+    residual->ensure_sizes(part_counts);
+    inv_diag->ensure_sizes(part_counts);
+    precond_res->ensure_sizes(part_counts);
+    search_dir->ensure_sizes(part_counts);
+    op_dir->ensure_sizes(part_counts);
+    pi->ensure_sizes(part_counts);
+    h_on_B->ensure_sizes(part_counts);
+    scratch->ensure_sizes(part_counts);
+    sum_terms->ensure_sizes(part_counts);
+    grad_on_rho->ensure_sizes(part_counts);
+
+    modules::NodeDivBDifference<Tvec, Kern> node_div_B{pmass};
+    node_div_B.set_edges(
+        storage.part_counts,
+        storage.neigh_cache,
+        storage.positions_with_ghosts,
+        hpart_edge,
+        storage.omega,
+        B_on_rho_edge,
+        residual);
+
+    modules::NodeDivBDifference<Tvec, Kern> node_div_grad{pmass};
+    node_div_grad.set_edges(
+        storage.part_counts,
+        storage.neigh_cache,
+        storage.positions_with_ghosts,
+        hpart_edge,
+        storage.omega,
+        grad_edge,
+        op_dir);
+
+    modules::NodeDivBAdjointGrad<Tvec, Kern> node_grad{pmass};
+    node_grad.set_edges(
+        storage.part_counts,
+        storage.neigh_cache,
+        storage.positions_with_ghosts,
+        hpart_edge,
+        omega_edge,
+        pi_edge,
+        grad_on_rho);
+
+    modules::NodeDivBProjectionPrecond<Tvec, Kern> node_precond{pmass};
+    node_precond.set_edges(
+        storage.part_counts,
+        storage.neigh_cache,
+        storage.positions_with_ghosts,
+        hpart_edge,
+        storage.omega,
+        inv_diag);
+
+    auto sum_val = IDataEdge<Tscal>::make_shared("sum_val", "sum_val");
+    NodeSumReduction<Tscal> node_sum{1};
+    node_sum.set_edges(storage.part_counts, scratch, sum_val);
+
+    NodeHadamardProd<Tscal> node_prod{1};
+
+    auto dot = [&](std::shared_ptr<Field<Tscal>> &f1, std::shared_ptr<Field<Tscal>> &f2) -> Tscal {
+        node_prod.set_edges(storage.part_counts, f1, f2, scratch);
+        node_prod.evaluate();
+        node_sum.evaluate();
+        return sum_val->data;
+    };
+
+    // the three components of sum_terms summed over all patches and ranks in one MPI reduction
+    auto sum_terms_all = [&]() -> std::array<Tscal, 3> {
+        auto dev_sched = shamsys::instance::get_compute_scheduler_ptr();
+
+        Tvec loc_val = {};
+        sum_terms->get_refs().for_each_ordered(
+            [&](u64 id_patch, const std::reference_wrapper<PatchDataField<Tvec>> &field_ref) {
+                u32 cnt = part_counts.get(id_patch);
+                if (cnt == 0) {
+                    return;
+                }
+                loc_val += shamalgs::primitives::sum(dev_sched, field_ref.get().get_buf(), 0, cnt);
+            });
+
+        std::array<Tscal, 3> loc = {loc_val.x(), loc_val.y(), loc_val.z()};
+        std::array<Tscal, 3> ret = {};
+        shamcomm::mpi::Allreduce(
+            loc.data(), ret.data(), 3, get_mpi_type<Tscal>(), MPI_SUM, MPI_COMM_WORLD);
+        return ret;
+    };
+
+    // h / max(|B|, floor), with the floor a fraction of the rms |B|
+    auto update_h_on_B = [&]() {
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+            sham::kernel_call(
+                q,
+                sham::MultiRef{
+                    pdat.get_field<Tscal>(ihpart).get_buf(),
+                    pdat.get_field<Tvec>(iB_on_rho).get_buf()},
+                sham::MultiRef{scratch->get_buf(cur_p.id_patch)},
+                pdat.get_obj_cnt(),
+                [pmass](
+                    u32 id_a,
+                    const Tscal *__restrict hpart,
+                    const Tvec *__restrict B_on_rho,
+                    Tscal *__restrict B_sq) {
+                    Tscal rho_a = shamrock::sph::rho_h(pmass, hpart[id_a], Kernel::hfactd);
+                    Tvec B_a    = B_on_rho[id_a] * rho_a;
+
+                    B_sq[id_a] = sycl::dot(B_a, B_a);
+                });
+        });
+        node_sum.evaluate();
+
+        Tscal B_floor = bfloor_frac * sycl::sqrt(sum_val->data / Tscal(npart_all));
+
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+            sham::kernel_call(
+                q,
+                sham::MultiRef{
+                    pdat.get_field<Tscal>(ihpart).get_buf(), scratch->get_buf(cur_p.id_patch)},
+                sham::MultiRef{h_on_B->get_buf(cur_p.id_patch)},
+                pdat.get_obj_cnt(),
+                [B_floor](
+                    u32 id_a,
+                    const Tscal *__restrict hpart,
+                    const Tscal *__restrict B_sq,
+                    Tscal *__restrict h_on_B) {
+                    Tscal B_norm = sycl::max(sycl::sqrt(B_sq[id_a]), B_floor);
+
+                    h_on_B[id_a] = hpart[id_a] * sham::inv_sat_zero(B_norm);
+                });
+        });
+    };
+
+    // z = s / a, and the sums {|s|_V^2, sum chi^2, <s, z>}
+    auto residual_stats = [&]() -> std::array<Tscal, 3> {
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+            sham::kernel_call(
+                q,
+                sham::MultiRef{
+                    pdat.get_field<Tscal>(ihpart).get_buf(),
+                    residual->get_buf(cur_p.id_patch),
+                    inv_diag->get_buf(cur_p.id_patch),
+                    h_on_B->get_buf(cur_p.id_patch)},
+                sham::MultiRef{
+                    precond_res->get_buf(cur_p.id_patch), sum_terms->get_buf(cur_p.id_patch)},
+                pdat.get_obj_cnt(),
+                [pmass](
+                    u32 id_a,
+                    const Tscal *__restrict hpart,
+                    const Tscal *__restrict residual,
+                    const Tscal *__restrict inv_diag,
+                    const Tscal *__restrict h_on_B,
+                    Tscal *__restrict precond_res,
+                    Tvec *__restrict sum_terms) {
+                    Tscal rho_a = shamrock::sph::rho_h(pmass, hpart[id_a], Kernel::hfactd);
+                    Tscal s_a   = residual[id_a];
+                    Tscal z_a   = s_a * inv_diag[id_a];
+                    Tscal chi_a = s_a * h_on_B[id_a];
+
+                    precond_res[id_a] = z_a;
+                    sum_terms[id_a]
+                        = Tvec{(pmass / rho_a) * s_a * s_a, chi_a * chi_a, s_a * z_a};
+                });
+        });
+        return sum_terms_all();
+    };
+
+    // rms of the largest ntop values of chi and of |chi - chi_prev|, the threshold being
+    // resolved on its chi_top_nbits leading bits
+    auto chi_top_rms = [&]() -> std::array<Tscal, 2> {
+        auto chi_pass = [&](Tscal thr_chi, Tscal thr_dchi, bool sum_sq) {
+            scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+                auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+                Tscal count_w = (sum_sq) ? Tscal{0} : Tscal{1};
+                Tscal sq_w    = (sum_sq) ? Tscal{1} : Tscal{0};
+
+                sham::kernel_call(
+                    q,
+                    sham::MultiRef{
+                        residual->get_buf(cur_p.id_patch),
+                        h_on_B->get_buf(cur_p.id_patch),
+                        pdat.get_field<Tscal>(ichi_prev).get_buf()},
+                    sham::MultiRef{sum_terms->get_buf(cur_p.id_patch)},
+                    pdat.get_obj_cnt(),
+                    [thr_chi, thr_dchi, count_w, sq_w](
+                        u32 id_a,
+                        const Tscal *__restrict residual,
+                        const Tscal *__restrict h_on_B,
+                        const Tscal *__restrict chi_prev,
+                        Tvec *__restrict sum_terms) {
+                        Tscal chi_a  = sycl::fabs(residual[id_a]) * h_on_B[id_a];
+                        Tscal dchi_a = sycl::fabs(chi_a - chi_prev[id_a]);
+
+                        Tscal in_chi  = (chi_a >= thr_chi) ? Tscal{1} : Tscal{0};
+                        Tscal in_dchi = (dchi_a >= thr_dchi) ? Tscal{1} : Tscal{0};
+
+                        sum_terms[id_a] = Tvec{
+                            in_chi * (count_w + sq_w * chi_a * chi_a),
+                            in_dchi * (count_w + sq_w * dchi_a * dchi_a),
+                            Tscal{0}};
+                    });
+            });
+            return sum_terms_all();
+        };
+
+        u64 bits_chi   = 0;
+        u64 bits_dchi  = 0;
+        Tscal cnt_chi  = Tscal(npart_all);
+        Tscal cnt_dchi = Tscal(npart_all);
+
+        for (i32 bit = 62; bit > 62 - chi_top_nbits; bit--) {
+            u64 try_chi  = bits_chi | (u64(1) << bit);
+            u64 try_dchi = bits_dchi | (u64(1) << bit);
+
+            auto counts
+                = chi_pass(std::bit_cast<f64>(try_chi), std::bit_cast<f64>(try_dchi), false);
+
+            if (counts[0] >= Tscal(ntop)) {
+                bits_chi = try_chi;
+                cnt_chi  = counts[0];
+            }
+            if (counts[1] >= Tscal(ntop)) {
+                bits_dchi = try_dchi;
+                cnt_dchi  = counts[1];
+            }
+        }
+
+        Tscal thr_chi  = std::bit_cast<f64>(bits_chi);
+        Tscal thr_dchi = std::bit_cast<f64>(bits_dchi);
+
+        auto sums = chi_pass(thr_chi, thr_dchi, true);
+
+        Tscal top_chi  = sums[0] - (cnt_chi - Tscal(ntop)) * thr_chi * thr_chi;
+        Tscal top_dchi = sums[1] - (cnt_dchi - Tscal(ntop)) * thr_dchi * thr_dchi;
+
+        return {
+            sycl::sqrt(sycl::max(top_chi, Tscal{0}) / Tscal(ntop)),
+            sycl::sqrt(sycl::max(top_dchi, Tscal{0}) / Tscal(ntop))};
+    };
+
+    auto B_norm_sq = [&]() -> Tscal {
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+            sham::kernel_call(
+                q,
+                sham::MultiRef{
+                    pdat.get_field<Tscal>(ihpart).get_buf(),
+                    pdat.get_field<Tvec>(iB_on_rho).get_buf()},
+                sham::MultiRef{scratch->get_buf(cur_p.id_patch)},
+                pdat.get_obj_cnt(),
+                [pmass](
+                    u32 id_a,
+                    const Tscal *__restrict hpart,
+                    const Tvec *__restrict B_on_rho,
+                    Tscal *__restrict vol_B_sq) {
+                    Tscal rho_a = shamrock::sph::rho_h(pmass, hpart[id_a], Kernel::hfactd);
+                    Tvec B_a    = B_on_rho[id_a] * rho_a;
+
+                    vol_B_sq[id_a] = (pmass / rho_a) * sycl::dot(B_a, B_a);
+                });
+        });
+        node_sum.evaluate();
+        return sum_val->data;
+    };
+
+    // s = D B, preconditioner
+    shambase::DistributedData<PatchDataField<Tvec>> B_on_rho_ghost
+        = exchange_ghosts(storage.exchange_gz_B, get_B_on_rho);
+    set_ghost_refs(*B_on_rho_edge, B_on_rho_ghost);
+
+    node_div_B.evaluate();
+    node_precond.evaluate();
+    update_h_on_B();
+
+    Tscal B_norm_sq_init = B_norm_sq();
+
+    // z = s / a, <s, z>
+    std::array<Tscal, 3> stats = residual_stats();
+
+    Tscal div_B_norm_sq_init = stats[0];
+    Tscal rms_chi_init       = sycl::sqrt(stats[1] / Tscal(npart_all));
+    Tscal rz                 = stats[2];
+
+    std::array<Tscal, 2> top_rms = chi_top_rms();
+    Tscal chi_top_ref            = top_rms[1];
+
+    Tscal tol    = solver_config.divb_projection_tol;
+    u32 max_iter = solver_config.divb_projection_max_iter;
+
+    auto converged = [&](Tscal div_B_norm_sq, Tscal rms_chi) -> bool {
+        if (div_B_norm_sq <= tol * tol * div_B_norm_sq_init) {
+            return true;
+        }
+        if (rms_chi >= chi_abs) {
+            return false;
+        }
+        top_rms = chi_top_rms();
+        return top_rms[1] <= chi_fred * chi_top_ref || top_rms[0] < chi_abs;
+    };
+
+    bool done = rms_chi_init < chi_abs && (chi_top_ref <= 0 || top_rms[0] < chi_abs);
+
+    // pi = 0, p = z
+    scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+        pi->get(cur_p.id_patch).field_raz();
+    });
+
+    NodeOverwrite<Tscal> node_init_search_dir{1};
+    node_init_search_dir.set_edges(storage.part_counts, precond_res, search_dir);
+    node_init_search_dir.evaluate();
+
+    auto alpha = IDataEdge<Tscal>::make_shared("alpha", "\\alpha");
+    auto beta  = IDataEdge<Tscal>::make_shared("beta", "\\beta");
+
+    NodeAXPY<Tscal> node_new_pi{1};
+    node_new_pi.set_edges(storage.part_counts, search_dir, alpha, pi);
+
+    NodeAXPY<Tscal> node_new_residual{1};
+    node_new_residual.set_edges(storage.part_counts, op_dir, alpha, residual);
+
+    NodeAYPX<Tscal> node_new_search_dir{1};
+    node_new_search_dir.set_edges(storage.part_counts, precond_res, beta, search_dir);
+
+    auto get_search_dir = [&](u64 id_patch) -> PatchDataField<Tscal> & {
+        return search_dir->get(id_patch);
+    };
+    auto get_pi = [&](u64 id_patch) -> PatchDataField<Tscal> & {
+        return pi->get(id_patch);
+    };
+    auto get_grad_on_rho = [&](u64 id_patch) -> PatchDataField<Tvec> & {
+        return grad_on_rho->get(id_patch);
+    };
+
+    shambase::DistributedData<PatchDataField<Tscal>> pi_ghost;
+    shambase::DistributedData<PatchDataField<Tvec>> grad_ghost;
+
+    u32 niter = 0;
+    while (!done && rz > 0 && niter < max_iter) {
+        niter++;
+
+        // w = D G p
+        pi_ghost = exchange_ghosts(storage.exchange_gz_pi, get_search_dir);
+        set_ghost_refs(*pi_edge, pi_ghost);
+        node_grad.evaluate();
+
+        grad_ghost = exchange_ghosts(storage.exchange_gz_B, get_grad_on_rho);
+        set_ghost_refs(*grad_edge, grad_ghost);
+        node_div_grad.evaluate();
+
+        // <p, w>
+        Tscal pw = dot(search_dir, op_dir);
+        if (pw <= 0) {
+            niter--;
+            if (shamcomm::world_rank() == 0) {
+                logger::warn_ln(
+                    "sph::Model", "div B projection: conjugate gradient direction lost, stopping");
+            }
+            break;
+        }
+
+        // pi += alpha p
+        alpha->data = rz / pw;
+        node_new_pi.evaluate();
+
+        // s -= alpha w
+        alpha->data = -alpha->data;
+        node_new_residual.evaluate();
+
+        // z = s / a, <s, z>
+        stats = residual_stats();
+
+        done = converged(stats[0], sycl::sqrt(stats[1] / Tscal(npart_all)));
+        if (done) {
+            break;
+        }
+
+        // p = z + beta p
+        beta->data = stats[2] / rz;
+        rz         = stats[2];
+        node_new_search_dir.evaluate();
+    }
+
+    // B/rho -= G pi / rho
+    pi_ghost = exchange_ghosts(storage.exchange_gz_pi, get_pi);
+    set_ghost_refs(*pi_edge, pi_ghost);
+    node_grad.evaluate();
+
+    alpha->data = -1;
+    NodeAXPY<Tvec> node_new_B_on_rho{1};
+    node_new_B_on_rho.set_edges(
+        storage.part_counts,
+        grad_on_rho,
+        alpha,
+        storage.solver_graph.template get_edge_ptr<FieldRefs<Tvec>>("B/rho"));
+    node_new_B_on_rho.evaluate();
+
+    scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+        pdat.get_field<Tscal>(ipsi_on_ch).field_raz();
+        pdat.get_field<Tscal>(idpsi_on_ch).field_raz();
+    });
+
+    // D B and chi of the projected field
+    B_on_rho_ghost = exchange_ghosts(storage.exchange_gz_B, get_B_on_rho);
+    set_ghost_refs(*B_on_rho_edge, B_on_rho_ghost);
+    node_div_B.evaluate();
+    update_h_on_B();
+
+    if (solver_config.has_field_div_b()) {
+        const u32 idivB = pdl.get_field_idx<Tscal>("divB");
+        scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+            pdat.get_field<Tscal>(idivB).overwrite(
+                residual->get(cur_p.id_patch), pdat.get_obj_cnt());
+        });
+    }
+
+    scheduler().for_each_patchdata_nonempty([&](Patch cur_p, PatchDataLayer &pdat) {
+        auto &q = shamsys::instance::get_compute_scheduler().get_queue();
+
+        sham::kernel_call(
+            q,
+            sham::MultiRef{residual->get_buf(cur_p.id_patch), h_on_B->get_buf(cur_p.id_patch)},
+            sham::MultiRef{pdat.get_field<Tscal>(ichi_prev).get_buf()},
+            pdat.get_obj_cnt(),
+            [](u32 id_a,
+               const Tscal *__restrict residual,
+               const Tscal *__restrict h_on_B,
+               Tscal *__restrict chi_prev) {
+                chi_prev[id_a] = sycl::fabs(residual[id_a]) * h_on_B[id_a];
+            });
+    });
+
+    stats = residual_stats();
+
+    Tscal div_B_norm_sq_end = stats[0];
+    Tscal rms_chi_end       = sycl::sqrt(stats[1] / Tscal(npart_all));
+    Tscal B_norm_sq_end     = B_norm_sq();
+
+    if (shamcomm::world_rank() == 0) {
+        logger::info_ln(
+            "sph::Model",
+            sham::format(
+                "div B projection: {} iterations, |div B|_V {:.3e} -> {:.3e}, rms chi {:.3e} -> "
+                "{:.3e}, dE_B/E_B {:.3e}",
+                niter,
+                sycl::sqrt(div_B_norm_sq_init),
+                sycl::sqrt(div_B_norm_sq_end),
+                rms_chi_init,
+                rms_chi_end,
+                (B_norm_sq_end - B_norm_sq_init) * sham::inv_sat_zero(B_norm_sq_init)));
+
+        if (niter >= max_iter && !done) {
+            logger::warn_ln(
+                "sph::Model", "div B projection: iteration cap reached before the tolerance");
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // end artificial viscosity section ////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -4149,6 +4744,11 @@ shammodels::sph::TimestepLog shammodels::sph::Solver<Tvec, Kern>::evolve_once() 
         }
 
     } while (need_rerun_corrector);
+
+    if (has_b_field && solver_config.divb_projection_step_interval > 0
+        && (solve_logs.step_count + 1) % solver_config.divb_projection_step_interval == 0) {
+        project_div_b();
+    }
 
     reset_merge_ghosts_fields();
     reset_eos_fields();

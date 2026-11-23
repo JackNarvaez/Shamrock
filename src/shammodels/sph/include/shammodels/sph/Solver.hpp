@@ -307,6 +307,9 @@ namespace shammodels::sph {
         /// @brief Updates the magnetic current field (for NIMHD)
         void update_j();
 
+        /// @brief Projects the magnetic field onto a discretely divergence free field
+        void project_div_b();
+
         /// @brief Initializes data layout for ghost particle fields
         void init_ghost_layout();
 
